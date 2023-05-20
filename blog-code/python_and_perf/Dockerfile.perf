@@ -1,0 +1,7 @@
+From python:3.12-rc
+RUN git clone https://github.com/brendangregg/FlameGraph.git
+RUN apt update && apt install -y emacs-nox linux-perf && rm /usr/bin/perf && mv /usr/bin/perf_5.10 /usr/bin/perf
+RUN mkdir /perf
+COPY slow.py /perf/slow.py
+ENV PYTHONPERFSUPPORT=1
+WORKDIR /perf/
