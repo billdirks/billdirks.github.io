@@ -1,0 +1,31 @@
+0:04.91 vs 0:02.94
+
+
+Different days, the 1billion an be 3 seconds slower
+
+Everything
+0:44.56 vs 0:46.03
+0:46.34, 0:45.49
+
+4.56 vs 2.93
+0:04.75, 0:02.95
+
+Metrics
+4.17 vs 2.56
+4.19 vs 2.51
+
+0:42.23 vs 0:41.35
+42.35 vs 40.80
+41.71 vs 0:42.01
+
+Histogram
+41.84 vs 42.09
+0:42.59, 0:41.79
+saving from editor can add 2s
+4:14 vs 2:56
+4:15 vs 2:58
+
+io only
+3.69 vs 1.94
+35.13 vs 0:34.96
+36.57 vs 0:35.07
