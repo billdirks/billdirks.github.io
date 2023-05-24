@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>bill's mumbles - python</title><link href="https://billdirks.com/" rel="alternate"></link><link href="https://billdirks.com/feeds/python.atom.xml" rel="self"></link><id>https://billdirks.com/</id><updated>2023-01-21T00:00:00-08:00</updated><entry><title>Profiling Python with perf</title><link href="https://billdirks.com/profiling-python-with-perf.html" rel="alternate"></link><published>2023-01-21T00:00:00-08:00</published><updated>2023-01-21T00:00:00-08:00</updated><author><name>bill dirks</name></author><id>tag:billdirks.com,2023-01-21:/profiling-python-with-perf.html</id><summary type="html">&lt;p&gt;Getting python and c traces using&amp;nbsp;perf&lt;/p&gt;</summary><content type="html">&lt;h1&gt;Overview&lt;/h1&gt;
+&lt;p&gt;&lt;code&gt;perf&lt;/code&gt; is a linux profiling tool. I read &lt;a href="https://www.petermcconnell.com/posts/perf_eng_with_py12/"&gt;this blog post&lt;/a&gt; about &lt;code&gt;perf&lt;/code&gt; coming to python 3.12 and I wanted to recreate it and&amp;nbsp;experiment.&lt;/p&gt;
+&lt;p&gt;This post highlights some &lt;code&gt;perf&lt;/code&gt; goodness. It also provides the docker image I used on my m1 mac to play with &lt;code&gt;perf&lt;/code&gt;. All the code is available &lt;a href="https://github.com/billdirks/billdirks.github.io/tree/publish/code/python_and_perf"&gt;here&lt;/a&gt;.&lt;/p&gt;
+&lt;h1&gt;Goodness&lt;/h1&gt;
+&lt;p&gt;Before python 3.12 if we used &lt;code&gt;perf&lt;/code&gt; to profile our code we wouldn&amp;#8217;t see our python function&amp;nbsp;names:&lt;/p&gt;
+&lt;p&gt;&lt;img alt="perf report without python symbols" src="/images/profiling_python_with_perf/perf_without_python.png"&gt;&lt;/p&gt;
+&lt;p&gt;Now if we do the same thing, we can see them. This is much&amp;nbsp;better!&lt;/p&gt;
+&lt;p&gt;&lt;img alt="perf report with python symbols" src="/images/profiling_python_with_perf/perf_with_python.png"&gt;&lt;/p&gt;
+&lt;h1&gt;Running docker&amp;nbsp;image&lt;/h1&gt;
+&lt;p&gt;I&amp;#8217;ve uploaded my docker image onto dockerhub so you can run it by&amp;nbsp;doing:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;docker&lt;span class="w"&gt; &lt;/span&gt;run&lt;span class="w"&gt; &lt;/span&gt;-it&lt;span class="w"&gt; &lt;/span&gt;--rm&lt;span class="w"&gt; &lt;/span&gt;--privileged&lt;span class="w"&gt; &lt;/span&gt;--mount&lt;span class="w"&gt; &lt;/span&gt;type=bind,source=&lt;span class="cp"&gt;${&lt;/span&gt;&lt;span class="n"&gt;PWD&lt;/span&gt;&lt;span class="cp"&gt;}&lt;/span&gt;,target=/perf/to_local&lt;span class="w"&gt; &lt;/span&gt;bdirks/pyperf:latest&lt;span class="w"&gt; &lt;/span&gt;bash
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;If you get an error, &lt;code&gt;Couldn't record kernel reference relocation symbol&lt;/code&gt;, you may need to run &lt;code&gt;sysctl -w kernel.kptr_restrict=1&lt;/code&gt; in the docker container.
+See this &lt;a href="https://stackoverflow.com/a/21588642"&gt;stack overflow discussion&lt;/a&gt;.&lt;/p&gt;
+&lt;h1&gt;perf&amp;nbsp;Dockerfile&lt;/h1&gt;
+&lt;p&gt;If you want to manually build the docker image do the&amp;nbsp;following:&lt;/p&gt;
+&lt;p&gt;To&amp;nbsp;build:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;docker build -f Dockerfile.perf --tag pyperf:latest .
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;To&amp;nbsp;run:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;docker&lt;span class="w"&gt; &lt;/span&gt;run&lt;span class="w"&gt; &lt;/span&gt;-it&lt;span class="w"&gt; &lt;/span&gt;--rm&lt;span class="w"&gt; &lt;/span&gt;--privileged&lt;span class="w"&gt; &lt;/span&gt;--mount&lt;span class="w"&gt; &lt;/span&gt;type=bind,source=&lt;span class="cp"&gt;${&lt;/span&gt;&lt;span class="n"&gt;PWD&lt;/span&gt;&lt;span class="cp"&gt;}&lt;/span&gt;,target=/perf/to_local&lt;span class="w"&gt; &lt;/span&gt;pyperf:latest&lt;span class="w"&gt; &lt;/span&gt;bash
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h1&gt;perf&amp;nbsp;Commands&lt;/h1&gt;
+&lt;p&gt;Running python with perf&amp;nbsp;support.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;# Run perf on a slow python file (~30 s)
+perf record -F 99 -g -- python slow.py
+
+# See profiling report
+perf report -g -i perf.data
+
+# Create flamegraph svg on local directory
+perf script &amp;gt; out.perf
+/FlameGraph/stackcollapse-perf.pl out.perf &amp;gt; out.folded
+/FlameGraph/flamegraph.pl out.folded &amp;gt; to_local/flame.svg
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;To see the profiling report without python symbols, restart the docker image, turn off python perf support, &lt;code&gt;unset PYTHONPERFSUPPORT&lt;/code&gt;, and rerun the commands&amp;nbsp;above.&lt;/p&gt;
+&lt;h1&gt;Using this image to run perf on your own python&amp;nbsp;files&lt;/h1&gt;
+&lt;p&gt;We&amp;#8217;ll call the directory you ran the &lt;code&gt;docker run&lt;/code&gt; command the &amp;#8220;mounted host directory&amp;#8221;. This directory is accessbile in your docker container at &lt;code&gt;/perf/to_local&lt;/code&gt;. If you want to run &lt;code&gt;perf&lt;/code&gt; against one of your own python files, you can put it in mounted host directory and then run &lt;code&gt;perf&lt;/code&gt; from the &lt;code&gt;/perf/to_local&lt;/code&gt;. For&amp;nbsp;example:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;cd /perf/to_local/
+perf record -F 99 -g -- python &amp;lt;your_python_file.py&amp;gt;
+perf script &amp;gt; out.perf
+/FlameGraph/stackcollapse-perf.pl out.perf &amp;gt; out.folded
+/FlameGraph/flamegraph.pl out.folded &amp;gt; flame.svg
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;The generated &lt;code&gt;perf.data&lt;/code&gt;, &lt;code&gt;out.perf&lt;/code&gt;, &lt;code&gt;out.folded&lt;/code&gt;, &lt;code&gt;flame.svg&lt;/code&gt; are accessible in the docker container at &lt;code&gt;/perf/to_local&lt;/code&gt; and outside the docker container in the mounted host&amp;nbsp;directroy.&lt;/p&gt;</content><category term="python"></category><category term="python"></category><category term="performance"></category></entry></feed>
