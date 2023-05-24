@@ -12,7 +12,7 @@ Lately, I've been frustrated with slow software.  Poor startup times, poor respo
 
 My path to writing software started with analyzing biological data and a lot of my interest in computing revolves around processing and getting insights from data.
 
-Lately I've been writing a lot of python. While it's great to build functional things quickly, a downside is, it is slow.
+Lately I've been writing a lot of Python. While it's great to build functional things quickly, a downside is, it is slow.
 
 # Goals
 
@@ -176,7 +176,7 @@ I also examined the memory output of `gtime -v`.  Both data sets fit completely 
 | 100 million           |  744 MB   |  745 MB             |
 | 1 billion             | 6753 MB   | 6754 MB             |
 
-# Comparison to python
+# Comparison to Python
 
 Since I spend a lot of time looking at Python code, I was curious how fast a similar computation would be there. For this quick comparison, I only looked at computing a histogram using numpy. This would be comparable to the "Compute Histogram Only" numbers, however, the Python histogram is a little simpler to compute than DDSketch. I also don't write the histogram data to a file. This gives the Python code a slight advantage. The script I used was:
 
@@ -195,7 +195,7 @@ hist = numpy.histogram(data, 80591, range=(0, 10000000))
 | Python      | 1 billion      | 48.20 s  | 8773 MB |
 | C++         | 1 billion      | 39.14 s  | 6754 MB |
 
-The python code is significantly slower and consumes more memory but is much, much simpler. Most of the time in Python was also spent in IO (~4.8 s and ~40.3 s).
+The Python code is significantly slower and consumes more memory but is much, much simpler. Most of the time in Python was also spent in IO (~4.8 s and ~40.3 s).
 
 # Final Thoughts
 

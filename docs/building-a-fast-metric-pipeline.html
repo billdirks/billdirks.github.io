@@ -81,7 +81,7 @@
             <h1>Motivation</h1>
 <p>Lately, I&#8217;ve been frustrated with slow software.  Poor startup times, poor response times, it feels like a slog to use a lot of&nbsp;tools.</p>
 <p>My path to writing software started with analyzing biological data and a lot of my interest in computing revolves around processing and getting insights from&nbsp;data.</p>
-<p>Lately I&#8217;ve been writing a lot of python. While it&#8217;s great to build functional things quickly, a downside is, it is&nbsp;slow.</p>
+<p>Lately I&#8217;ve been writing a lot of Python. While it&#8217;s great to build functional things quickly, a downside is, it is&nbsp;slow.</p>
 <h1>Goals</h1>
 <p>For this project I wanted to build a metric pipeline meeting the following&nbsp;criteria:</p>
 <ul>
@@ -264,7 +264,7 @@ gtime -v build/compute data/&lt;datafile&gt; &gt; o
 </tr>
 </tbody>
 </table>
-<h1>Comparison to&nbsp;python</h1>
+<h1>Comparison to&nbsp;Python</h1>
 <p>Since I spend a lot of time looking at Python code, I was curious how fast a similar computation would be there. For this quick comparison, I only looked at computing a histogram using numpy. This would be comparable to the &#8220;Compute Histogram Only&#8221; numbers, however, the Python histogram is a little simpler to compute than DDSketch. I also don&#8217;t write the histogram data to a file. This gives the Python code a slight advantage. The script I used&nbsp;was:</p>
 <div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">pandas</span>
 <span class="kn">import</span> <span class="nn">numpy</span>
@@ -309,7 +309,7 @@ gtime -v build/compute data/&lt;datafile&gt; &gt; o
 </tr>
 </tbody>
 </table>
-<p>The python code is significantly slower and consumes more memory but is much, much simpler. Most of the time in Python was also spent in <span class="caps">IO</span> (~4.8 s and ~40.3&nbsp;s).</p>
+<p>The Python code is significantly slower and consumes more memory but is much, much simpler. Most of the time in Python was also spent in <span class="caps">IO</span> (~4.8 s and ~40.3&nbsp;s).</p>
 <h1>Final&nbsp;Thoughts</h1>
 <p>This project was a lot of fun! The two things I found surprising, but are &#8220;obvious&#8221; in&nbsp;retrospect:</p>
 <ol>

@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom"><title>bill's mumbles</title><link href="https://billdirks.com/" rel="alternate"></link><link href="https://billdirks.com/feeds/all.atom.xml" rel="self"></link><id>https://billdirks.com/</id><updated>2023-05-21T00:00:00-07:00</updated><entry><title>Building a fast metric pipeline</title><link href="https://billdirks.com/building-a-fast-metric-pipeline.html" rel="alternate"></link><published>2023-05-21T00:00:00-07:00</published><updated>2023-05-21T00:00:00-07:00</updated><author><name>bill dirks</name></author><id>tag:billdirks.com,2023-05-21:/building-a-fast-metric-pipeline.html</id><summary type="html">&lt;p&gt;Building a proof of concept for a fast metric&amp;nbsp;pipeline&lt;/p&gt;</summary><content type="html">&lt;h1&gt;Motivation&lt;/h1&gt;
 &lt;p&gt;Lately, I&amp;#8217;ve been frustrated with slow software.  Poor startup times, poor response times, it feels like a slog to use a lot of&amp;nbsp;tools.&lt;/p&gt;
 &lt;p&gt;My path to writing software started with analyzing biological data and a lot of my interest in computing revolves around processing and getting insights from&amp;nbsp;data.&lt;/p&gt;
-&lt;p&gt;Lately I&amp;#8217;ve been writing a lot of python. While it&amp;#8217;s great to build functional things quickly, a downside is, it is&amp;nbsp;slow.&lt;/p&gt;
+&lt;p&gt;Lately I&amp;#8217;ve been writing a lot of Python. While it&amp;#8217;s great to build functional things quickly, a downside is, it is&amp;nbsp;slow.&lt;/p&gt;
 &lt;h1&gt;Goals&lt;/h1&gt;
 &lt;p&gt;For this project I wanted to build a metric pipeline meeting the following&amp;nbsp;criteria:&lt;/p&gt;
 &lt;ul&gt;
@@ -185,7 +185,7 @@ gtime -v build/compute data/&amp;lt;datafile&amp;gt; &amp;gt; o
 &lt;/tr&gt;
 &lt;/tbody&gt;
 &lt;/table&gt;
-&lt;h1&gt;Comparison to&amp;nbsp;python&lt;/h1&gt;
+&lt;h1&gt;Comparison to&amp;nbsp;Python&lt;/h1&gt;
 &lt;p&gt;Since I spend a lot of time looking at Python code, I was curious how fast a similar computation would be there. For this quick comparison, I only looked at computing a histogram using numpy. This would be comparable to the &amp;#8220;Compute Histogram Only&amp;#8221; numbers, however, the Python histogram is a little simpler to compute than DDSketch. I also don&amp;#8217;t write the histogram data to a file. This gives the Python code a slight advantage. The script I used&amp;nbsp;was:&lt;/p&gt;
 &lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;code&gt;&lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="nn"&gt;pandas&lt;/span&gt;
 &lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="nn"&gt;numpy&lt;/span&gt;
@@ -230,7 +230,7 @@ gtime -v build/compute data/&amp;lt;datafile&amp;gt; &amp;gt; o
 &lt;/tr&gt;
 &lt;/tbody&gt;
 &lt;/table&gt;
-&lt;p&gt;The python code is significantly slower and consumes more memory but is much, much simpler. Most of the time in Python was also spent in &lt;span class="caps"&gt;IO&lt;/span&gt; (~4.8 s and ~40.3&amp;nbsp;s).&lt;/p&gt;
+&lt;p&gt;The Python code is significantly slower and consumes more memory but is much, much simpler. Most of the time in Python was also spent in &lt;span class="caps"&gt;IO&lt;/span&gt; (~4.8 s and ~40.3&amp;nbsp;s).&lt;/p&gt;
 &lt;h1&gt;Final&amp;nbsp;Thoughts&lt;/h1&gt;
 &lt;p&gt;This project was a lot of fun! The two things I found surprising, but are &amp;#8220;obvious&amp;#8221; in&amp;nbsp;retrospect:&lt;/p&gt;
 &lt;ol&gt;
