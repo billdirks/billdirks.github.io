@@ -89,11 +89,11 @@ void compute_metrics(const MmapFile mmap_file, ComputeMetricOutput* computed_met
     char* end_ptr = mmap_file.end();
     while (cur_ptr != end_ptr) {
         strtod(cur_ptr, &cur_ptr);
-        // double d = strtod(cur_ptr, &cur_ptr);
-        // computed_metrics->ddsketch.process(d);
-        // for (int i = 0; i < computed_metrics->metrics.size(); ++i) {
-        //     computed_metrics->metrics[i]->process(d);
-        // }
+        double d = strtod(cur_ptr, &cur_ptr);
+        computed_metrics->ddsketch.process(d);
+        for (int i = 0; i < computed_metrics->metrics.size(); ++i) {
+            computed_metrics->metrics[i]->process(d);
+        }
     }
 }
 
