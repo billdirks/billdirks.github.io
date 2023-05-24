@@ -34,8 +34,7 @@ DEFAULT_PAGINATION = 10
 # Uncomment following line if you want document-relative URLs when developing
 # RELATIVE_URLS = True
 
-THEME = "/Users/bill/Personal/pelican-themes/elegant"
-#THEME = "notmyidea"
+THEME = "./themes/elegant"
 
 TYPOGRIFY = True
 DIRECT_TEMPLATES = ["index", "tags", "categories", "archives", "404"]
