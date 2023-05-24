@@ -37,3 +37,10 @@ THEME = "./themes/elegant"
 
 TYPOGRIFY = True
 DIRECT_TEMPLATES = ["index", "tags", "categories", "archives", "404"]
+
+
+STATIC_PATHS = ['extra/favicon.ico', 'extra/CNAME']
+EXTRA_PATH_METADATA = {
+    'extra/favicon.ico': {'path': 'favicon.ico'},
+    'extra/CNAME': {'path': 'CNAME'},
+}
