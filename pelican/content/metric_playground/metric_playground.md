@@ -1,5 +1,5 @@
 Title: Building a fast metric pipeline
-Date: 2023-05-21
+Date: 2023-05-23
 Category: metrics
 Tags: c++, performance, metrics
 Slug: building-a-fast-metric-pipeline
@@ -167,7 +167,7 @@ Running it produces a 100 million normally distributed ascii encoded numbers.
 | Compute Histogram Only |   1 billion | 39.14 s | 23.24 s |
 | Compute Histogram and Descriptive Metrics |   1 billion | 41.84 s | 26.19 s |
 
-From these measurements we see that, despite focusing on what I though was a computational problem, reading in the data dominates the timings. While I would need to do more timings, the cold runs suggest a possible linear scaling. If I don't reboot between runs and have other apps running (eg browser, editor) the 100 million data point runs are very similar to what I report here while the 1 billion data point runs are seconds slower and the "hot" runs take the same amount of time as the "cold" runs.
+From these measurements we see that, despite focusing on what I thought was a computational problem, reading in the data dominates the timings. While I would need to do more timings, the cold runs suggest a possible linear scaling. If I don't reboot between runs and have other apps running (eg browser, editor) the 100 million data point runs are very similar to what I report here while the 1 billion data point runs are seconds slower and the "hot" runs take the same amount of time as the "cold" runs.
 
 I also examined the memory output of `gtime -v`.  Both data sets fit completely into memory and, for a particular data set, the same amount of memory is used across runs.
 
