@@ -24,9 +24,7 @@ LINKS = (
 )
 
 # Social widget
-SOCIAL = (
-    ('LinkedIn', 'https://www.linkedin.com/in/bdirks/', 'LinkedIn'),
-)
+SOCIAL = (("LinkedIn", "https://www.linkedin.com/in/bdirks/", "LinkedIn"),)
 
 DEFAULT_PAGINATION = 10
 
@@ -39,8 +37,8 @@ TYPOGRIFY = True
 DIRECT_TEMPLATES = ["index", "tags", "categories", "archives", "404"]
 
 
-STATIC_PATHS = ['extra/favicon.ico', 'extra/CNAME']
+STATIC_PATHS = ["images", "extra/favicon.ico", "extra/CNAME"]
 EXTRA_PATH_METADATA = {
-    'extra/favicon.ico': {'path': 'favicon.ico'},
-    'extra/CNAME': {'path': 'CNAME'},
+    "extra/favicon.ico": {"path": "favicon.ico"},
+    "extra/CNAME": {"path": "CNAME"},
 }
