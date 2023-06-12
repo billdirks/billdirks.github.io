@@ -17,16 +17,16 @@
 
 <meta name="keywords" content="c++, performance, metrics, metrics, " />
 
-<meta property="og:title" content="Building a fast metric pipeline "/>
-<meta property="og:url" content="https://billdirks.com/building-a-fast-metric-pipeline.html" />
-<meta property="og:description" content="Building a proof of concept for a fast metric pipeline" />
+<meta property="og:title" content="Computing metrics fast "/>
+<meta property="og:url" content="https://billdirks.com/computing-metrics-fast.html" />
+<meta property="og:description" content="A proof of concept for computing metrics quickly" />
 <meta property="og:site_name" content="bill&#39;s mumbles" />
 <meta property="og:article:author" content="bill dirks" />
 <meta property="og:article:published_time" content="2023-05-23T00:00:00-07:00" />
-<meta name="twitter:title" content="Building a fast metric pipeline ">
-<meta name="twitter:description" content="Building a proof of concept for a fast metric pipeline">
+<meta name="twitter:title" content="Computing metrics fast ">
+<meta name="twitter:description" content="A proof of concept for computing metrics quickly">
 
-        <title>Building a fast metric pipeline  · bill&#39;s mumbles
+        <title>Computing metrics fast  · bill&#39;s mumbles
 </title>
         <link href="https://billdirks.com/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="bill&#39;s mumbles - Full Atom Feed" />
 
@@ -69,8 +69,8 @@
 <div class="row-fluid">
     <header class="page-header span10 offset2">
         <h1>
-            <a href="https://billdirks.com/building-a-fast-metric-pipeline.html">
-                Building a fast metric&nbsp;pipeline
+            <a href="https://billdirks.com/computing-metrics-fast.html">
+                Computing metrics&nbsp;fast
             </a>
         </h1>
     </header>
@@ -80,26 +80,22 @@
         <div class="span8 offset2 article-content">
             
             <h1>Motivation</h1>
-<p>Lately, I&#8217;ve been frustrated with slow software.  Poor startup times, poor response times, it feels like a slog to use a lot of&nbsp;tools.</p>
 <p>My path to writing software started with analyzing biological data and a lot of my interest in computing revolves around processing and getting insights from&nbsp;data.</p>
-<p>Lately I&#8217;ve been writing a lot of Python. While it&#8217;s great to build functional things quickly, a downside is, it is&nbsp;slow.</p>
+<p>Lately, I&#8217;ve been frustrated with slow software.  Poor startup times, poor response times, too many tools are just not fun to&nbsp;use.</p>
+<p>I&#8217;ve been writing a lot of Python. While it&#8217;s great to quickly build something functional, the result is often not particularly&nbsp;fast.</p>
 <h1>Goals</h1>
-<p>For this project I wanted to build a metric pipeline meeting the following&nbsp;criteria:</p>
+<p>There are a lot of large, complex libraries for computing metrics over large datasets. I was curious how fast a naive implementation could be. To keep this simple I decided on the following constraints and&nbsp;goals:</p>
 <ul>
 <li>I want to compute metrics over numeric&nbsp;data.</li>
 <li>I want the computation to be fast. That is, how long would it take to compute metrics on 1 billion data points on my&nbsp;laptop?</li>
-<li>The pipeline is allowed to see each data point exactly once.<ul>
-<li>This is so we can use the pipeline for streaming data or reading&nbsp;files.</li>
-<li>It encourages writing O(N)&nbsp;metrics</li>
+<li>The program is allowed to see each data point exactly once. This is so we can use this code for streaming data in addition to reading data from&nbsp;files.</li>
+<li>Metrics are defined outside of the compute engine for easy extension (e.g. someone could write new metrics as a&nbsp;plugin).</li>
 </ul>
-</li>
-<li>Metrics are defined outside of the core pipeline for easy&nbsp;extension.</li>
-</ul>
-<p>Since metrics are defined outside of the main pipeline, I have some metric specific&nbsp;criteria:</p>
+<p>Since metrics are defined outside of the compute engine, I have some metric specific&nbsp;criteria:</p>
 <ul>
-<li>For metrics, I&#8217;m willing to sacrifice exactness if I can bound the&nbsp;error.</li>
-<li>The metrics should have bounded memory, independent of the data size. That is, the metric can&#8217;t just store all the data to get around the seeing data once&nbsp;criteria.</li>
-<li>Metrics should be summable. That is, if the same metric is computed over 2 data sets, we can combine the results to get an aggregate&nbsp;result.</li>
+<li>I&#8217;m willing to sacrifice exactness if I can bound the&nbsp;error.</li>
+<li>The metrics should have bounded memory, independent of the data size. The metrics can&#8217;t just store all the data in some internal buffer to get around the &#8220;seeing data only once&#8221;&nbsp;constraint.</li>
+<li>Metrics should be mergeable. That is, if the same metric is computed over 2 data sets, we can combine the results to get an aggregate result that is equivalent to computing the metric over the concatenation of the data&nbsp;sets.</li>
 </ul>
 <h1>Metrics</h1>
 <p>I find estimating a distribution will answer most questions about one dimensional numeric data. In addition I&#8217;d like to compute some descriptive statistics. The metrics I am interested in&nbsp;are:</p>
@@ -109,35 +105,45 @@
 <li>mean</li>
 <li>a distribution&nbsp;estimate</li>
 </ul>
-<p>To estimate the distribution I&#8217;ve chosen to use a very slight variation of <a href="https://arxiv.org/pdf/1908.10693.pdf">DDSketch</a>. DDSketch is basically an algorithm for generating a histogram. It is a bit more complicated than a traditional histogram with fixed size bins because it scales the bin size to bound the relative error. That means we will likely have less bins overall and we can still make meaningful statements about percentiles. For example, we could use this distribution and infer that our estimate of the median is within 0.01% of the true empirical&nbsp;median.</p>
-<h1>Pipeline&nbsp;architecture</h1>
-<p>I&#8217;d like to describe the architecture and some high level implementation details. The code is all in C++ and is organized into 2 logical components: the pipeline and the metrics. All the code is available <a href="https://github.com/billdirks/billdirks.github.io/tree/publish/code/metric_playground">here</a>.</p>
+<p>To estimate the distribution I&#8217;ve chosen to use a variation of <a href="https://arxiv.org/pdf/1908.10693.pdf">DDSketch</a>. DDSketch is basically an algorithm for generating a histogram. It is a bit more complicated than a traditional histogram with fixed size bins because it scales the bin size to bound the relative error, which is a configurable parameter. For example, if we pick a relative error of 1%, the bin containing 100 will be approximately 99 to 101, while the bin containing 1000 will be approximately 990 to 1010. The bins won&#8217;t exactly be this because they won&#8217;t be centered exactly at 100 and 1000. The implication is we will likely have fewer bins than a histogram with fixed sized bins. We will still be able to make meaningful statements about percentiles. For example, we could use this distribution and infer that our estimate of the median is within 1% of the true empirical&nbsp;median.</p>
+<p>The DDSketch paper describes 2 versions of the algorithm. The simple version has storage cost that is linear in the data size. For every data point, it determines the bin based on the relative error set by the user and increments the counter for the bin. If all the data points are spread apart, we may get a new bin for each point. For example, if the error rate is 1% and the data follows the pattern {1, 10, 100, 1000, &#8230;}, we will get a unique bin for each data point. The paper also describes a second version where the number of bins is a fixed integer, say N. When processing data points, if an N+1 bin is needed, the algorithm collapses the 2 smallest bins into 1. This loses resolution for the lowest percentile bins. Presumably the authors chose this strategy because they care more about the high percentile bins for their use cases, e.g. measuring slow response times for a web app. I created a third version of this algorithm based on my use case. I assume the user has some expectation for the range of their data and create an algorithm with 3 parameters: the relative error, a min value, and a max value. I then fix the number of bins based on the [min, max] range and the relative error. I also create 2 extra bins for all the values smaller than min and greater than max. This idea that the user has some prior knowlege and expectations about the range of their data was inspired by the data validation library <a href="https://greatexpectations.io/">Great Expectations</a>.</p>
+<p>For this project, I initially implemented the simple version of DDSketch. After observing performance, I ended up creating and implementing my third version described above. For more details see the section about the <code>vector</code> data structure&nbsp;below.</p>
+<h1>Architecture</h1>
+<p>I&#8217;d like to describe the architecture and some high level implementation details. The code is all in C++ and is organized into 2 logical components: the compute engine and the metrics. All the code is available <a href="https://github.com/billdirks/billdirks.github.io/tree/publish/code/metric_playground">here</a>.</p>
 <p>The metric interface lives in <code>metric.hpp</code> which defines a <code>Metric</code> template class. The important parts of the interface&nbsp;are:</p>
 <ul>
 <li>A <code>process</code> method which takes a batch of input data and is responsible for updating the metric&#8217;s state using this&nbsp;data.</li>
-<li>A <code>value</code> method which returns the current value of the metric. It should be callable and return an accurate value after any arbitrary number of calls to <code>process</code>.</li>
+<li>A <code>value</code> method which returns the current value of the metric. It should return an accurate value after any arbitrary number of calls to <code>process</code>.</li>
 </ul>
-<p>I have not yet implemented an <code>add</code> method to allow combining of metrics though all the current metrics could support this type of operation. An <code>add</code> method would allow one to distribute computations over many nodes and then combine them&nbsp;afterwards.</p>
-<p>While one could envision different uses for a metrics pipeline, such as processing streaming data or batch processing, for this project I have written a pipeline that reads a data file from disk, looping over the data and calling the metrics <code>process</code> method on each data point. The pipeline is implemented in <code>compute_metrics.cpp</code> and we setup and run it in <code>main.cpp</code>.</p>
+<p>I have not yet implemented a <code>merge</code> method that would aggregate a metric after computing it over two independent data sets though all the metrics I have implemented could be extended in this&nbsp;fashion.</p>
+<p>While one could envision different uses for a metric compute engine, such as processing streaming data or batch processing, for this project I have written a program that reads a data file from disk, loops over the data and calls the <code>process</code> method on each data point. At then end of processing the file, a call to <code>value</code> is made to get the final metric value. The metric engine is implemented in <code>compute_metrics.cpp</code> and we set it up and run it in <code>main.cpp</code>.</p>
 <h1>Learnings</h1>
-<p>It took me a few passes before I settled on my final code optimizations. In this section I enumerate the lessons learned and the things that mattered to make progress. There were 2 classes of optimization: <span class="caps">IO</span> (reading the data) and&nbsp;compute.</p>
+<p>It took me a few passes before I settled on my final code optimizations. In this section I enumerate the lessons learned as I worked on making the compute engine faster. There were 2 classes of optimization: <span class="caps">IO</span> (reading the data) and&nbsp;compute.</p>
 <h2>Compute</h2>
-<p>For optimizing compute, I focus on DDSketch. The other metrics were more straightforward, and while they likely can be more optimized, most of the compute time was spent in DDSketch. Since DDSketch basically produces a histogram, difficulties arise from storing and sorting the histogram as new data&nbsp;arrives.</p>
+<p>For optimizing compute, I focused on DDSketch. The other metrics were more straightforward, and while they can be more optimized, most of the compute time was spent in DDSketch. Since DDSketch basically produces a histogram, difficulties arise from updating and sorting the histogram bins as new data&nbsp;arrives.</p>
 <p>There are 3 main lessons about&nbsp;compute:</p>
 <ol>
 <li>Choosing the correct data structure is&nbsp;important.</li>
 <li>Asymptotics may matter but constants also&nbsp;matter.</li>
 <li>Measuring where time is spent is important and can be&nbsp;surprising.</li>
 </ol>
-<p>Here are the high level steps we do when creating a histogram. The <code>process</code> method looks at each point in a batch, determines the bucket it falls into, and increments the counter on that bucket by one. The edges of the bucket are determined by DDSketch which is parameterized by the relative error we allow, in our case 0.01%. A call to <code>value</code> will produce the current&nbsp;histogram.</p>
-<p>There are a number of data structures that can store histogram data. I tried 3: <code>map</code>, <code>unordered_map</code>, and <code>vector</code> which are all available in the C++ standard&nbsp;library.</p>
-<p><code>map</code>: This is a dictionary with an ordering on the keys. So every <a href="https://en.cppreference.com/w/cpp/container/map">insert is <code>log(n)</code></a> where <code>n</code> is the current size of the <code>map</code>. If we insert <code>N</code> data points the number of operations is <code>log(1) + log(2) + ... + log(N)</code> which is <code>O(N log(N))</code>. For my initial implementation, I computed the bucket for each data point which I used as a key into a <code>map</code> and incremented the key&#8217;s value by 1. This was disappointingly&nbsp;slow.</p>
-<p><code>unordered_map</code>: An <code>unordered_map</code> is like a <code>map</code>, however, the keys are unordered. Since a histogram is ordered data, I end up ordering the <code>keys</code> on a call to <code>value</code>. In my code, I only call <code>value</code> once, after I see all the data from the input file. Inserts into an <code>unordered_map</code> are <a href="https://en.cppreference.com/w/cpp/container/unordered_map">O(1) on average</a>. However, we need to sort the <code>unordered_map</code> before outputting a histogram so the asymptotic time is once again <code>O(N log(N))</code>. The reason I chose to try <code>map</code> first was because the asymptotic times are the same but <code>map</code> was easier to implement since I didn&#8217;t have to think about sorting. <code>unordered_map</code> proved to be much faster, around 4X for my&nbsp;data.</p>
-<p>This still proved to be slow and I hoped that I could do better so I profiled the code. I compiled my code using <code>gperftools</code>, ran it on a test file with 100,000,000 points, and looked at the output with <code>gprof</code>. The results were surprising. The time wasn&#8217;t spent computing the bucket for a data point (my code) but instead was spent inserting numbers into the <code>unordered_map</code> (stdlib code). That means, computing the hash for the bucket, was the most expensive operation I was&nbsp;doing.</p>
-<p>I hadn&#8217;t thought too hard about implementing a bound on memory usage at this point. However, now that I understood how expensive hashing was, I wanted to predetermine the amount of memory needed and store the histogram in a list. The bucket produced by DDSketch is an integer representing the first bucket, second bucket, etc, so can be used as indexes into a&nbsp;list.</p>
-<p><code>vector</code>: A <code>vector</code> in C++ is a dynamically resizable list that is stored in a contiguous section of memory. In order to use it, I wanted to determine the amount of memory necessary up front so I could do 1 allocation and avoid copying and moving data around. DDSketch&#8217;s strategy to bound memory usage is to predetermine the number of buckets allowed and to combine the smallest index buckets when the maximum number of buckets is reached. I&#8217;m guessing this is because the authors are interested in accurately estimating the highest value percentiles (eg the p99 response time for web requests for an app). My use case is more inspired by data quality so I follow <a href="https://greatexpectations.io/">Great Expectations</a> lead and presume the user has some idea of the range the data should lie in. So this implementation requires the user to provide a lower and upper bound for the data. I then use these bounds to determine the number of buckets. I also add 2 additional buckets that are used when the data falls below or above this range. Using this strategy, I can preallocate the needed memory. The <code>vector</code> data structure also lets me avoid sorting and, since inserts are O(1), this results in an O(N) algorithm. So, while the major speedup is due to eliminating hashing, rethinking the algorithm also resulted in a faster asymptotic&nbsp;runtime!</p>
+<p>Here are the high-level steps we do when creating a histogram: the <code>process</code> method looks at each data point, determines the bucket it falls into, and increments the counter on that bucket by one. The edges of the bucket are determined by DDSketch which is parameterized by the relative error. For this project, we&#8217;ve chosen a relative error of&nbsp;0.01%.</p>
+<p>There are a number of data structures that can store histogram data. I tried 3: <a href="(https://en.cppreference.com/w/cpp/container/map)"><code>map</code></a>, <a href="(https://en.cppreference.com/w/cpp/container/unordered_map)"><code>unordered_map</code></a>, and <a href="https://en.cppreference.com/w/cpp/container/vector"><code>vector</code></a> which are all available in the C++ standard&nbsp;library.</p>
+<p>For my initial implementations using <code>map</code> and <code>unordered_map</code>, I used the simple version of DDSketch which does not bound&nbsp;memory.</p>
+<p><code>map</code>: This is a dictionary with ordered keys. Every <a href="https://en.cppreference.com/w/cpp/container/map">insert is <code>log(n)</code></a> where <code>n</code> is the current size of the <code>map</code>. If we insert <code>N</code> data points the number of operations is <code>log(1) + log(2) + ... + log(N)</code> which is <code>O(N log(N))</code>. For my initial implementation, I computed the canonical bucket value, the floating point number that is the center of a histogram bin, for each data point which I then used as a key into a <code>map</code> and incremented the key&#8217;s value by 1. This was disappointingly&nbsp;slow.</p>
+<p><code>unordered_map</code>: An <code>unordered_map</code> is like a <code>map</code>, but the keys are unordered. Since a histogram is ordered data, I need to sort the <code>keys</code> on a call to <code>value</code>. In my code, I only call <code>value</code> once, after I see all the data from the input file. Inserts into an <code>unordered_map</code> are <a href="https://en.cppreference.com/w/cpp/container/unordered_map">O(1) on average</a>. However, we need to sort the <code>unordered_map</code> before outputting a histogram so the asymptotic time is once again <code>O(N log(N))</code>. The reason I chose to try <code>map</code> first was because the asymptotic times are the same but <code>map</code> was easier to implement since I didn&#8217;t have to think about sorting. <code>unordered_map</code> proved to be much faster, around 4X for my&nbsp;data.</p>
+<p>This still proved to be slow and I hoped that I could do better so I profiled the code. I compiled my code using <a href="https://gperftools.github.io/gperftools/cpuprofile.html"><code>gperftools</code></a>, ran it on a test file with a 100,000,000 points, and looked at the output with <code>gprof</code>. The results were surprising. The time wasn&#8217;t spent computing the bucket for a data point (my code) but instead was spent inserting numbers into the <code>unordered_map</code> (stdlib code). That is, computing the hash for the bucket was the most expensive operation I was&nbsp;doing.</p>
+<p>Up to this point, I had been using the simple version of DDSketch that does not bound memory usage. However, since I was using a fixed data set of known values, the memory usage was known for these runs. I wanted to bound memory usage for an arbitrary data set. Understanding that hashing was a bottleneck provided extra motivation to bound the memory because then I could preallocate the memory and store the histogram in a&nbsp;list.</p>
+<p><code>vector</code>: A <code>vector</code> in C++ is a dynamically resizable list that is stored in a contiguous section of memory. In order to use it, I wanted to determine the amount of memory necessary up front so I could do 1 allocation and avoid copying and moving data around. I could also avoid resizing the list. To do this, I created my variant of DDSketch, described above, where I parameterize the algorithm by the relative error, the min value, and the max value. Using these values, I preallocate the appropriately sized vector to cover this range and initialize it to 0. Using this datastructure, processing new points&nbsp;becomes:</p>
+<ol>
+<li>Determine the correct index, <code>i</code>,  into the&nbsp;vector.</li>
+<li>Increment the <code>vector[i]</code> counter by&nbsp;1.</li>
+</ol>
+<p>If the data point is larger or smaller than the max/min, I increment the overflow or underflow&nbsp;counters.</p>
+<p>This data structure allows me to avoid sorting and, since processing a new data point is O(1), this results in an O(N) algorithm. So, while the major speedup is due to eliminating hashing, rethinking the algorithm also resulted in a faster asymptotic&nbsp;runtime!</p>
 <h2><span class="caps">IO</span></h2>
-<p>I like computing things and I thought the interesting part of this project would be computing metrics.  However, that wasn&#8217;t right. The actual performance bottleneck was reading the data from disk, ie <span class="caps">IO</span>.</p>
+<p>For this project, I wanted to use the most common and easy to use data format. My data file contains <span class="caps">ASCII</span> encoded floats seperated by newlines. This is a 1 column <span class="caps">CSV</span> file with no&nbsp;header.</p>
+<p>I like computing things and I thought the interesting part of this project would be computing metrics.  However, that wasn&#8217;t right. The actual performance bottleneck was reading the data from disk, i.e. <span class="caps">IO</span>.</p>
 <p>Since I didn&#8217;t initially think about <span class="caps">IO</span> at all, I implemented reading data in the most naive way possible.  I opened a file and read in the data one point at a time like&nbsp;this:</p>
 <div class="highlight"><pre><span></span><code><span class="c1"># variables</span>
 <span class="n">input</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ifstream</span><span class="w"> </span><span class="p">{</span><span class="n">filename</span><span class="p">,</span><span class="w"> </span><span class="n">ios</span><span class="p">::</span><span class="ow">in</span><span class="p">};</span>
@@ -147,10 +153,10 @@
 <span class="n">input</span><span class="w"> </span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="n">value</span><span class="p">;</span>
 </code></pre></div>
 
-<p>I initially picked a batch size, read in at most batch size points, and updated the metrics before starting the next cycle. This was horrendously slow primarily because I was doing a separate read call for each data&nbsp;point.</p>
-<p>After some searching I came across this <a href="https://lemire.me/blog/2012/06/26/which-is-fastest-read-fread-ifstream-or-mmap/">fantastic blog post</a> about reading data which had some <a href="https://github.com/lemire/Code-used-on-Daniel-Lemire-s-blog/blob/master/2012/06/26/ioaccess.cpp">sample benchmarking code</a>. Running the benchmarks on my machine indicated that <code>mmap</code> was going to be the fastest. I did try using <code>ifstream</code> to read in the whole file at once but <code>mmap</code> was significantly&nbsp;faster.</p>
+<p>I basically read in a point, update the metrics, and repeated. This was horrendously slow because I was doing a separate read call for each data&nbsp;point.</p>
+<p>After some searching I came across this <a href="https://lemire.me/blog/2012/06/26/which-is-fastest-read-fread-ifstream-or-mmap/">fantastic blog post</a> about reading data which had some <a href="https://github.com/lemire/Code-used-on-Daniel-Lemire-s-blog/blob/master/2012/06/26/ioaccess.cpp">sample benchmarking code</a>. Running the benchmarks on my machine indicated that <code>mmap</code> was going to be the fastest. I also tried using <code>ifstream</code> to read in the whole file at once but <code>mmap</code> was significantly faster. I believe this is because using <code>mmap</code>, and setting the appropriate <code>advise</code> parameters, parallelized <span class="caps">IO</span> and compute by allowing the <span class="caps">OS</span> to load in the next chunks of data while computing over the current&nbsp;one.</p>
 <h1>Setup for&nbsp;Timings</h1>
-<p>All the timings were done on my laptop which is a 1st gen M1 powerbook with 16 <span class="caps">GB</span> of <span class="caps">RAM</span>. They  were done by modifying the <code>compute_metrics</code> function in <code>compute_metrics.cpp</code>. The function is defined&nbsp;as:</p>
+<p>All the timings were done on my laptop which is a 1st gen M1 powerbook with 16 <span class="caps">GB</span> of <span class="caps">RAM</span>. They were done by modifying the <code>compute_metrics</code> function in <code>compute_metrics.cpp</code>. The function is defined&nbsp;as:</p>
 <div class="highlight"><pre><span></span><code><span class="nb nb-Type">void</span><span class="w"> </span><span class="n">compute_metrics</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">MmapFile</span><span class="w"> </span><span class="n">mmap_file</span><span class="p">,</span><span class="w"> </span><span class="n">ComputeMetricOutput</span><span class="o">*</span><span class="w"> </span><span class="n">computed_metrics</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nb">char</span><span class="o">*</span><span class="w"> </span><span class="n">cur_ptr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">mmap_file</span><span class="o">.</span><span class="n">start</span><span class="p">();</span>
 <span class="w">    </span><span class="nb">char</span><span class="o">*</span><span class="w"> </span><span class="n">end_ptr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">mmap_file</span><span class="o">.</span><span class="n">end</span><span class="p">();</span>
@@ -185,22 +191,22 @@ rm o
 gtime -v build/compute data/&lt;datafile&gt; &gt; o
 </code></pre></div>
 
-<p>I use the compiler flag <code>-O3</code>. This optimizes for speed (as opposed to binary size) while keeping the computations accurate. That is, one can get faster binaries if one is willing to do inaccurate math, but this is antithetical to what I am trying to&nbsp;do.</p>
-<p>The data was generated using the code in <code>random_number.cpp</code> which can be compiled as run as&nbsp;follows:</p>
+<p>I use the compiler flag <code>-O3</code>. This optimizes for speed (as opposed to binary size) while keeping the computations accurate. That is, one can get faster binaries by using <code>-Ofast</code>, but one has to make assumptions about the data, and it was unclear to me if I could formally bound the error. This is something I need to investigate&nbsp;further.</p>
+<p>The data was generated using the code in <code>random_number.cpp</code> which can be compiled and run as&nbsp;follows:</p>
 <div class="highlight"><pre><span></span><code>g++ -Wall --std=c++20 -Iinclude -O3 utils/random_number.cpp -o random_number
 ./random_number
 </code></pre></div>
 
-<p>Running it produces a 100 million normally distributed ascii encoded&nbsp;numbers.</p>
+<p>Running it produces a 100 million normally distributed <span class="caps">ASCII</span> encoded&nbsp;numbers.</p>
 <h3>Timings</h3>
-<p><code>gtime -v</code> prints out some nice diagnostic information about a pipeline run. To determine speed I report the <code>Elapsed (wall clock) time</code>. I did timings with 2 data sets, one with 100 million data points and one with 1 billion data points. If I run the pipeline more than once in succession subsequent runs are significantly faster since the <span class="caps">OS</span> caches data. To normalize for this I reboot between timings. I report timing both the &#8220;cold&#8221; and &#8220;hot&#8221;&nbsp;runs.</p>
+<p><code>gtime -v &lt;executable&gt;</code> prints out some nice diagnostic information for the executable run. To determine latency I report the <code>Elapsed (wall clock) time</code>. I did timings with 2 data sets, one with 100 million data points and one with 1 billion data points. If I run the pipeline more than once in succession subsequent runs are significantly faster since the <span class="caps">OS</span> caches data. To control for this I reboot between timings. I report timing both the &#8220;cold&#8221; and &#8220;hot&#8221;&nbsp;runs.</p>
 <table>
 <thead>
 <tr>
 <th>Name</th>
 <th>Number of data points</th>
-<th>Cold Speed</th>
-<th>Hot Speed</th>
+<th>Cold Latency</th>
+<th>Hot Latency</th>
 </tr>
 </thead>
 <tbody>
@@ -242,8 +248,8 @@ gtime -v build/compute data/&lt;datafile&gt; &gt; o
 </tr>
 </tbody>
 </table>
-<p>From these measurements we see that, despite focusing on what I thought was a computational problem, reading in the data dominates the timings. While I would need to do more timings, the cold runs suggest a possible linear scaling. If I don&#8217;t reboot between runs and have other apps running (eg browser, editor) the 100 million data point runs are very similar to what I report here while the 1 billion data point runs are seconds slower and the &#8220;hot&#8221; runs take the same amount of time as the &#8220;cold&#8221;&nbsp;runs.</p>
-<p>I also examined the memory output of <code>gtime -v</code>.  Both data sets fit completely into memory and, for a particular data set, the same amount of memory is used across&nbsp;runs.</p>
+<p>From these measurements we see that, despite focusing on what I thought was a computational problem, reading in the data dominates the timings. While I would need to do more timings, the cold runs suggest a possible linear scaling. If I don&#8217;t reboot between runs and have other apps running (e.g. browser, editor) the 100 million data point runs are very similar to what I report here while the 1 billion data point runs are seconds slower and the &#8220;hot&#8221; runs take roughly the same amount of time as the &#8220;cold&#8221;&nbsp;runs.</p>
+<p>I also examined the memory output of <code>gtime -v</code>.  The same amount of memory is being used across all runs on a particular file. While, in these cases, we are able to load all the data into memory, being able to completely load the data into memory isn&#8217;t necessary for this&nbsp;implementation.</p>
 <table>
 <thead>
 <tr>
@@ -266,7 +272,7 @@ gtime -v build/compute data/&lt;datafile&gt; &gt; o
 </tbody>
 </table>
 <h1>Comparison to&nbsp;Python</h1>
-<p>Since I spend a lot of time looking at Python code, I was curious how fast a similar computation would be there. For this quick comparison, I only looked at computing a histogram using numpy. This would be comparable to the &#8220;Compute Histogram Only&#8221; numbers, however, the Python histogram is a little simpler to compute than DDSketch. I also don&#8217;t write the histogram data to a file. This gives the Python code a slight advantage. The script I used&nbsp;was:</p>
+<p>Since I spend a lot of time looking at Python code, I was curious how fast a similar computation in Python would be. For this quick comparison, I looked at only computing a histogram using NumPy, a common numerics package, which is a thin python wrapper around C code (pure Python is very slow). This would be comparable to the &#8220;Compute Histogram Only&#8221; numbers above, however, the Python histogram is a little simpler to compute than DDSketch. I also don&#8217;t write the histogram data to a file. This gives the Python code a slight advantage. The script I used&nbsp;was:</p>
 <div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">pandas</span>
 <span class="kn">import</span> <span class="nn">numpy</span>
 
@@ -279,13 +285,13 @@ gtime -v build/compute data/&lt;datafile&gt; &gt; o
 <tr>
 <th>Language</th>
 <th>Number of data points</th>
-<th>Speed</th>
+<th>Latency</th>
 <th>Max resident memory</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Python</td>
+<td>Python/NumPy</td>
 <td>100 million</td>
 <td>5.84 s</td>
 <td>2262 <span class="caps">MB</span></td>
@@ -297,7 +303,7 @@ gtime -v build/compute data/&lt;datafile&gt; &gt; o
 <td>745 <span class="caps">MB</span></td>
 </tr>
 <tr>
-<td>Python</td>
+<td>Python/Numpy</td>
 <td>1 billion</td>
 <td>48.20 s</td>
 <td>8773 <span class="caps">MB</span></td>
@@ -310,7 +316,7 @@ gtime -v build/compute data/&lt;datafile&gt; &gt; o
 </tr>
 </tbody>
 </table>
-<p>The Python code is significantly slower and consumes more memory but is much, much simpler. Most of the time in Python was also spent in <span class="caps">IO</span> (~4.8 s and ~40.3&nbsp;s).</p>
+<p>The Python code is significantly slower and consumes more memory but is much, much simpler to write. Most of the time in Python was also spent in <span class="caps">IO</span> (~4.8 s and ~40.3&nbsp;s).</p>
 <h1>Final&nbsp;Thoughts</h1>
 <p>This project was a lot of fun! The two things I found surprising, but are &#8220;obvious&#8221; in&nbsp;retrospect:</p>
 <ol>
@@ -320,9 +326,9 @@ gtime -v build/compute data/&lt;datafile&gt; &gt; o
 <p>I also wanted to highlight 2 lessons that I took&nbsp;away:</p>
 <ol>
 <li>Experimenting by benchmarking is very helpful. I was lucky that I came across Daniel Lemire&#8217;s blog and could use his code to do timings of different <span class="caps">IO</span>&nbsp;strategies.</li>
-<li>Profilings code is helpful and often surprising. I was very focused on the map data structures and it took the nudge from profiling to make me think of a different strategy&nbsp;altogether.</li>
+<li>Profiling code is helpful and often surprising. I was very focused on the map data structures and it took the nudge from the profiling results to make me think of a different strategy&nbsp;altogether.</li>
 </ol>
-<p>Even though my code has a lot of shortcomings (eg I assume the data is well formed and only contains 1 column), it did teach me about data processing bottlenecks. I see why people develop new data formats and why so much attention is spent on <span class="caps">IO</span>.</p>
+<p>Even though my code has a lot of shortcomings (e.g. I assume the data is well-formed and only contains 1 column), it did teach me about data processing bottlenecks. I see why people develop new data formats and why so much attention is spent on <span class="caps">IO</span>.</p>
 <p>Thanks for&nbsp;reading!</p>
 
 
