@@ -16,7 +16,7 @@ I've been writing a lot of Python. While it's great to quickly build something f
 
 # Goals
 
-There are a lot of large, complex libraries for computing metrics over large datasets. I was curious how fast a naive implementation could be. To keep this simple I decided on the following constraints and goals:
+There are a lot of large, complex libraries for computing metrics over large datasets. I was curious how fast a straightforward implementation could be. To keep this simple I decided on the following constraints and goals:
 
 * I want to compute metrics over numeric data.
 * I want the computation to be fast. That is, how long would it take to compute metrics on 1 billion data points on my laptop?
@@ -225,3 +225,7 @@ I also wanted to highlight 2 lessons that I took away:
 Even though my code has a lot of shortcomings (e.g. I assume the data is well-formed and only contains 1 column), it did teach me about data processing bottlenecks. I see why people develop new data formats and why so much attention is spent on IO.
 
 Thanks for reading!
+
+# Acknowledgements
+
+Thanks to [Ben Weintraub](https://www.benweintraub.com/) for the discussions and helping make this post better!
