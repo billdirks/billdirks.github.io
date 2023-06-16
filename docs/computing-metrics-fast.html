@@ -84,7 +84,7 @@
 <p>Lately, I&#8217;ve been frustrated with slow software.  Poor startup times, poor response times, too many tools are just not fun to&nbsp;use.</p>
 <p>I&#8217;ve been writing a lot of Python. While it&#8217;s great to quickly build something functional, the result is often not particularly&nbsp;fast.</p>
 <h1>Goals</h1>
-<p>There are a lot of large, complex libraries for computing metrics over large datasets. I was curious how fast a naive implementation could be. To keep this simple I decided on the following constraints and&nbsp;goals:</p>
+<p>There are a lot of large, complex libraries for computing metrics over large datasets. I was curious how fast a straightforward implementation could be. To keep this simple I decided on the following constraints and&nbsp;goals:</p>
 <ul>
 <li>I want to compute metrics over numeric&nbsp;data.</li>
 <li>I want the computation to be fast. That is, how long would it take to compute metrics on 1 billion data points on my&nbsp;laptop?</li>
@@ -330,6 +330,8 @@ gtime -v build/compute data/&lt;datafile&gt; &gt; o
 </ol>
 <p>Even though my code has a lot of shortcomings (e.g. I assume the data is well-formed and only contains 1 column), it did teach me about data processing bottlenecks. I see why people develop new data formats and why so much attention is spent on <span class="caps">IO</span>.</p>
 <p>Thanks for&nbsp;reading!</p>
+<h1>Acknowledgements</h1>
+<p>Thanks to <a href="https://www.benweintraub.com/">Ben Weintraub</a> for the discussions and helping make this post&nbsp;better!</p>
 
 
              
