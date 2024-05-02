@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="stylesheet" type="text/css" href="https://billdirks.com/theme/css/elegant.prod.9e9d5ce754.css" media="screen">
+        <link rel="stylesheet" type="text/css" href="https://billdirks.com/theme/css/custom.css" media="screen">
+
+        <link rel="dns-prefetch" href="//fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com/" crossorigin>
+
+        <meta name="author" content="bill dirks" />
+
+        <meta property="og:type" content="article" />
+        <meta name="twitter:card" content="summary">
+
+<meta name="keywords" content="python, types, python, " />
+
+<meta property="og:title" content="Arbitrary Computation with Python Types "/>
+<meta property="og:url" content="https://billdirks.com/computation-with-python-types.html" />
+<meta property="og:description" content="Arbitrary computation in Python while never explicitly instantiating a class" />
+<meta property="og:site_name" content="bill&#39;s mumbles" />
+<meta property="og:article:author" content="bill dirks" />
+<meta property="og:article:published_time" content="2024-04-30T00:00:00-07:00" />
+<meta name="twitter:title" content="Arbitrary Computation with Python Types ">
+<meta name="twitter:description" content="Arbitrary computation in Python while never explicitly instantiating a class">
+
+        <title>Arbitrary Computation with Python Types  · bill&#39;s mumbles
+</title>
+        <link href="https://billdirks.com/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="bill&#39;s mumbles - Full Atom Feed" />
+
+
+
+        <link rel="shortcut icon" type="image/x-icon" href="https://billdirks.com/favicon.ico?">
+    </head>
+    <body>
+        <div id="content">
+            <div class="navbar navbar-static-top">
+                <div class="navbar-inner">
+                    <div class="container-fluid">
+                        <a class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
+                            <span class="icon-bar"></span>
+                            <span class="icon-bar"></span>
+                            <span class="icon-bar"></span>
+                        </a>
+                        <a class="brand" href="https://billdirks.com/"><span class=site-name>bill's mumbles</span></a>
+                        <div class="nav-collapse collapse">
+                            <ul class="nav pull-right top-menu">
+                                <li >
+                                    <a href=
+                                       https://billdirks.com
+                                    >Home</a>
+                                </li>
+                                <li ><a href="https://billdirks.com/pages/about.html">About</a></li>
+                                <li ><a href="https://billdirks.com/categories.html">Categories</a></li>
+                                <li ><a href="https://billdirks.com/tags.html">Tags</a></li>
+                                <li ><a href="https://billdirks.com/archives.html">Archives</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="container-fluid">
+                <div class="row-fluid">
+                    <div class="span1"></div>
+                    <div class="span10">
+<article itemscope>
+<div class="row-fluid">
+    <header class="page-header span10 offset2">
+        <h1>
+            <a href="https://billdirks.com/computation-with-python-types.html">
+                Arbitrary Computation with Python&nbsp;Types
+            </a>
+        </h1>
+    </header>
+</div>
+
+<div class="row-fluid">
+        <div class="span8 offset2 article-content">
+            
+            <h1>Introduction</h1>
+<p>For a project I&#8217;m doing at work, I wanted to get a better understanding of some of Pydantic&#8217;s underlying mechanics related to generics. This led me down a rabbit hole and I was left wondering if I could do arbitrary computation with python types. That is, could I ergonomically do computations using types directly while never explicitly instantiating a&nbsp;class.</p>
+<h1>Implementation</h1>
+<p>For this exercise I&#8217;m going to look at classes that represent integers and implement the ability to add these classes to produce a new class. To do this I&#8217;m going to leverage <code>__class_getitem__</code>. As background, in Python, one can implement the method <code>__getitem__(self, key)</code> to define what indexing into an object using <code>[]</code> does. For&nbsp;example:</p>
+<p><strong>Note, this and the following examples were all executed in an ipython shell using python&nbsp;3.10.13.</strong></p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Any</span>
+
+<span class="k">class</span> <span class="nc">Indexable</span><span class="p">:</span>
+  <span class="k">def</span> <span class="fm">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s1">&#39;my_</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s1">&#39;</span>
+
+<span class="n">indexable</span> <span class="o">=</span> <span class="n">Indexable</span><span class="p">()</span>
+<span class="n">indexable</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>  <span class="c1"># &#39;my_1&#39;</span>
+<span class="n">indexable</span><span class="p">[</span><span class="s2">&quot;computer&quot;</span><span class="p">]</span>  <span class="c1"># &#39;my_computer&#39;</span>
+</code></pre></div>
+
+<p><code>__class_getitem__</code> is an analogous method for indexing classes and lets one implement using <code>[]</code> on a class. Usually (in all cases I&#8217;ve seen), the argument inside of <code>[]</code> is a class and is used for defining&nbsp;generics.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">TypeVar</span><span class="p">,</span> <span class="n">Generic</span>
+
+<span class="n">T</span> <span class="o">=</span> <span class="n">TypeVar</span><span class="p">(</span><span class="s1">&#39;T&#39;</span><span class="p">)</span>
+<span class="k">class</span> <span class="nc">MyClass</span><span class="p">(</span><span class="n">Generic</span><span class="p">[</span><span class="n">T</span><span class="p">]):</span> <span class="o">...</span>
+</code></pre></div>
+
+<p>Now one can instantiate classes via <code>MyClass[int]()</code>, <code>MyClass[str]()</code>,&nbsp;etc.</p>
+<p>However, there is nothing restricting one to only pass classes to <code>[]</code>. One could pass arbitrary data. Combining this with the ability to dynamically make classes on the fly, one could generate a new class for each integer. For&nbsp;example:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">types</span> <span class="kn">import</span> <span class="n">new_class</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Any</span>
+
+<span class="k">class</span> <span class="nc">Integer</span><span class="p">:</span>
+
+    <span class="n">integer_type_cache</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">type</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="k">def</span> <span class="nf">__class_getitem__</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">integer</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">type</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">integer</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">Integer</span><span class="o">.</span><span class="n">integer_type_cache</span><span class="p">:</span>
+            <span class="n">neg</span> <span class="o">=</span> <span class="s2">&quot;Neg&quot;</span> <span class="k">if</span> <span class="n">integer</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+            <span class="n">Integer</span><span class="o">.</span><span class="n">integer_type_cache</span><span class="p">[</span><span class="n">integer</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_class</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;Integer</span><span class="si">{</span><span class="n">neg</span><span class="si">}{</span><span class="nb">abs</span><span class="p">(</span><span class="n">integer</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+                <span class="n">bases</span><span class="o">=</span><span class="p">(),</span>
+                <span class="n">kwds</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                <span class="n">exec_body</span><span class="o">=</span><span class="k">lambda</span> <span class="n">ns</span><span class="p">:</span> <span class="n">ns</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
+                    <span class="p">{</span>
+                        <span class="s2">&quot;INTEGER&quot;</span><span class="p">:</span> <span class="n">integer</span><span class="p">,</span>
+                    <span class="p">}</span>
+                <span class="p">),</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">Integer</span><span class="o">.</span><span class="n">integer_type_cache</span><span class="p">[</span><span class="n">integer</span><span class="p">]</span>
+
+<span class="c1"># Create an integer type</span>
+<span class="n">three</span> <span class="o">=</span> <span class="n">Integer</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span>
+<span class="n">three</span>  <span class="c1"># &lt;class &#39;types.Integer3&#39;&gt;</span>
+<span class="nb">type</span><span class="p">(</span><span class="n">three</span><span class="p">)</span>  <span class="c1"># type</span>
+
+<span class="c1"># We can instantiate one if we want</span>
+<span class="n">three</span><span class="p">()</span>  <span class="c1"># &lt;types.Integer3 object at 0x1067fd700&gt;</span>
+</code></pre></div>
+
+<p>If we want to add we could define a function&nbsp;like:</p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span> <span class="nf">addIntegers</span><span class="p">(</span><span class="n">a</span><span class="p">:</span> <span class="nb">type</span><span class="p">,</span> <span class="n">b</span><span class="p">:</span> <span class="nb">type</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">type</span><span class="p">:</span>
+    <span class="c1"># I&#39;m loose with types in this function. I&#39;m only passing in classes</span>
+    <span class="c1"># generated by Integer[N] to this method.</span>
+    <span class="k">return</span> <span class="n">Integer</span><span class="p">[</span><span class="n">a</span><span class="o">.</span><span class="n">INTEGER</span> <span class="o">+</span> <span class="n">b</span><span class="o">.</span><span class="n">INTEGER</span><span class="p">]</span>  <span class="c1"># type: ignore[misc, attr-defined]</span>
+
+<span class="n">addIntegers</span><span class="p">(</span><span class="n">Integer</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>  <span class="n">Integer</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span> <span class="o">==</span> <span class="n">three</span>  <span class="c1"># True</span>
+</code></pre></div>
+
+<p>We can now add classes to get new classes! We could make this more ergonomic by overloading the <code>+</code> sign to add these classes. Overloading <code>+</code> is done by implementing <code>__add__</code> on the class/type of an instance. However, the type of our dynamically generated types, say <code>Integer3</code> is <code>type</code>, which is not modifiable. However, we can set a metaclass on the dynamically created type. Doing this will give us a hook to define <code>__add__</code> since the type of <code>Integer3</code> will be our metaclass. Since <code>Integer3</code> is a class, it is still a <code>type</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">types</span> <span class="kn">import</span> <span class="n">new_class</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">cast</span>
+
+
+<span class="k">class</span> <span class="nc">MetaInteger</span><span class="p">(</span><span class="nb">type</span><span class="p">):</span>
+    <span class="n">INTEGER</span><span class="p">:</span> <span class="nb">int</span>
+
+    <span class="k">def</span> <span class="fm">__add__</span><span class="p">(</span><span class="bp">cls</span><span class="p">:</span> <span class="s2">&quot;MetaInteger&quot;</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="s2">&quot;MetaInteger&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;MetaInteger&quot;</span><span class="p">:</span>
+        <span class="c1"># Using [] on a class without using Generics will make mypy complain</span>
+        <span class="k">return</span> <span class="n">Integer</span><span class="p">[</span><span class="bp">cls</span><span class="o">.</span><span class="n">INTEGER</span> <span class="o">+</span> <span class="n">other</span><span class="o">.</span><span class="n">INTEGER</span><span class="p">]</span> <span class="c1"># type: ignore[misc]</span>
+
+<span class="k">class</span> <span class="nc">Integer</span><span class="p">:</span>
+
+    <span class="n">integer_type_cache</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">MetaInteger</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="k">def</span> <span class="nf">__class_getitem__</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">integer</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">MetaInteger</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">integer</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">Integer</span><span class="o">.</span><span class="n">integer_type_cache</span><span class="p">:</span>
+            <span class="n">neg</span> <span class="o">=</span> <span class="s2">&quot;Neg&quot;</span> <span class="k">if</span> <span class="n">integer</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+            <span class="c1"># new_class returns a type object. We cast to a MetaInteger</span>
+            <span class="c1"># since we are explicitly setting this as the metaclass and</span>
+            <span class="c1"># MetaInteger is a subclass of type.</span>
+            <span class="n">Integer</span><span class="o">.</span><span class="n">integer_type_cache</span><span class="p">[</span><span class="n">integer</span><span class="p">]</span> <span class="o">=</span> <span class="n">cast</span><span class="p">(</span><span class="n">MetaInteger</span><span class="p">,</span> <span class="n">new_class</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;Integer</span><span class="si">{</span><span class="n">neg</span><span class="si">}{</span><span class="nb">abs</span><span class="p">(</span><span class="n">integer</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+                <span class="n">bases</span><span class="o">=</span><span class="p">(),</span>
+                <span class="n">kwds</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;metaclass&quot;</span><span class="p">:</span> <span class="n">MetaInteger</span><span class="p">},</span>
+                <span class="n">exec_body</span><span class="o">=</span><span class="k">lambda</span> <span class="n">ns</span><span class="p">:</span> <span class="n">ns</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
+                    <span class="p">{</span>
+                        <span class="s2">&quot;INTEGER&quot;</span><span class="p">:</span> <span class="n">integer</span><span class="p">,</span>
+                    <span class="p">}</span>
+                <span class="p">),</span>
+            <span class="p">))</span>
+        <span class="k">return</span> <span class="n">Integer</span><span class="o">.</span><span class="n">integer_type_cache</span><span class="p">[</span><span class="n">integer</span><span class="p">]</span>
+
+
+<span class="c1"># Adding Integers</span>
+<span class="n">Integer</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span> <span class="o">+</span> <span class="n">Integer</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span> <span class="o">==</span> <span class="n">Integer</span><span class="p">[</span><span class="mi">7</span><span class="p">]</span>  <span class="c1"># True, adding works!</span>
+<span class="nb">isinstance</span><span class="p">(</span><span class="n">Integer</span><span class="p">[</span><span class="mi">7</span><span class="p">],</span> <span class="nb">type</span><span class="p">)</span>  <span class="c1"># True, it&#39;s a type</span>
+<span class="nb">type</span><span class="p">(</span><span class="n">Integer</span><span class="p">[</span><span class="mi">7</span><span class="p">])</span> <span class="c1"># __main__.MetaInteger, MetaInteger is a type subclass</span>
+<span class="n">MetaInteger</span><span class="o">.</span><span class="n">mro</span><span class="p">(</span><span class="n">MetaInteger</span><span class="p">)</span>  <span class="c1"># [__main__.MetaInteger, type, object], the metaclass type hierarchy.</span>
+</code></pre></div>
+
+<h1>Conclusion</h1>
+<p>This is clearly ridiculous. By using <code>[]</code> to instantiate new types we can store arbitrary data on a type that is as ergonomic as instantiating a class with <code>()</code>. We can also put arbitrary methods on the class as well as overload operators using a metaclass. We&#8217;ve made metaclasses analogous to classes, classes analogous to instances, and instances (eg <code>Integer[3]()</code>), well they&#8217;re a new thing at the bottom of the hierarchy. This gives us the ability to do arbitrary computation while never explicitly instantiating a python&nbsp;class.</p>
+<p>Would one ever want to do this? No, this is tomfoolery. But, I couldn&#8217;t resist trying to see if this was&nbsp;possible.</p>
+
+
+             
+ 
+            
+            
+            
+
+
+
+
+
+
+
+            <hr/>
+        </div>
+        <section id="article-sidebar" class="span2">
+            <h4>Published</h4>
+            <time itemprop="dateCreated" datetime="2024-04-30T00:00:00-07:00">Tue 30 April 2024</time>
+            <h4>Category</h4>
+            <a class="category-link" href="https://billdirks.com/categories.html#python-ref">python</a>
+            <h4>Tags</h4>
+            <ul class="list-of-tags tags-in-article">
+                <li><a href="https://billdirks.com/tags.html#python-ref">python
+                    <span class="superscript">2</span>
+</a></li>
+                <li><a href="https://billdirks.com/tags.html#types-ref">types
+                    <span class="superscript">1</span>
+</a></li>
+            </ul>
+<h4>Contact</h4>
+<div id="sidebar-social-link">
+    <a href="https://www.linkedin.com/in/bdirks/" title="LinkedIn" target="_blank" rel="nofollow noopener noreferrer">
+        <svg xmlns="http://www.w3.org/2000/svg" aria-label="LinkedIn" role="img" viewBox="0 0 512 512" fill="#fff"><rect width="512" height="512" rx="15%" fill="#0077b5"/><circle cx="142" cy="138" r="37"/><path stroke="#fff" stroke-width="66" d="M244 194v198M142 194v198"/><path d="M276 282c0-20 13-40 36-40 24 0 33 18 33 45v105h66V279c0-61-32-89-76-89-34 0-51 19-59 32"/></svg>
+    </a>
+</div>
+            
+
+
+
+
+
+            
+
+
+
+
+
+        </section>
+</div>
+</article>
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe.
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides.
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo https://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                      <div class="pswp__preloader__cut">
+                        <div class="pswp__preloader__donut"></div>
+                      </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>                    </div>
+                    <div class="span1"></div>
+                </div>
+            </div>
+        </div>
+            <script src="//code.jquery.com/jquery.min.js"></script>
+        <script src="//netdna.bootstrapcdn.com/twitter-bootstrap/2.3.2/js/bootstrap.min.js"></script>
+        <script src="https://billdirks.com/theme/js/elegant.prod.9e9d5ce754.js"></script>
+        <script>
+            function validateForm(query)
+            {
+                return (query.length > 0);
+            }
+        </script>
+
+    <script>
+    (function () {
+        if (window.location.hash.match(/^#comment-\d+$/)) {
+            $('#comment_thread').collapse('show');
+        }
+    })();
+    window.onhashchange=function(){
+        if (window.location.hash.match(/^#comment-\d+$/))
+            window.location.reload(true);
+    }
+    $('#comment_thread').on('shown', function () {
+        var link = document.getElementById('comment-accordion-toggle');
+        var old_innerHTML = link.innerHTML;
+        $(link).fadeOut(200, function() {
+            $(this).text('Click here to hide comments').fadeIn(200);
+        });
+        $('#comment_thread').on('hidden', function () {
+            $(link).fadeOut(200, function() {
+                $(this).text(old_innerHTML).fadeIn(200);
+            });
+        })
+    })
+</script>
+
+    </body>
+    <!-- Theme: Elegant built for Pelican
+        License : MIT -->
+</html>
