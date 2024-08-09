@@ -8,7 +8,7 @@ Summary: Tracing syscalls made from Python
 
 # How to trace network request or Using gdb to instrument syscalls made from Python
 
-There have been a number of times I've inherited some Python project and I have no idea where network requests are being made. For example, I've inherited large unit testing suites where some, but not all, network requests are being mocked. Another example is dependencies making surprising network requests. The goals of this post is:
+There have been a number of times I've inherited some Python project and I have no idea where network requests are being made. For example, I've inherited large unit testing suites where some, but not all, network requests are being mocked. Another example is dependencies making surprising network requests. The goals of this post are:
 
 * Provide a tool to trackdown network requests in a Python process
 * Determine the context of the network request, that is the Python backtrace. This can be useful because if we want to find tests missing mocks.
@@ -41,7 +41,7 @@ docker run -it --rm bdirks/pytrace bash
 
 We are going to use `gdb` to catch a network syscall and print a backtrace when it occurs. To enable `gdb` to print Python symbols and backtraces we have installed the debug build of Python into our Docker image. We have also installed some other tools to help us explore and do some text processing: `ps`, `strace`, and `perl`.
 
-Also included in the docker image is a Python script `demo.py` that makes a single http request and prints the results:
+Also included in the docker image is a Python script, `demo.py`, that makes a single http request and prints the results:
 
 ```
 import urllib.request
@@ -54,13 +54,13 @@ if __name__ == '__main__':
     main()
 ```
 
-You can run by typing this command on the docker bash console:
+You can run this script by typing this command on the docker bash console:
 
 ```
 python3 ./demo.py
 ```
 
-If you want to see every syscall are made during the execution of the script you can use `strace`:
+If you want to see every syscall that is made during the execution of the script you can use `strace`:
 
 ```
 strace python3 demo.py
@@ -79,7 +79,7 @@ close(3)                                = 0
 ... LOTS OF OUTPUT ...
 ```
 
-Wow, that's a lot of output. Glacing through the output we see each line begins with `<syscall_name>(<arguments>) ... `. To get a clearer view of what syscalls are being made we can count the number of times each syscall being made and print them out:
+Wow, that's a lot of output. Glacing through the output we see each line begins with `<syscall_name>(<arguments>) ... `. To get a clearer view of what syscalls are being made we can parse the `strace` output and count the number of times each syscall is called:
 
 ```
 strace python3 demo.py 2>&1 >/dev/null | perl -lane '@a = split(/\(/, $_); print($a[0])' | sort | uniq -c | sort
@@ -196,7 +196,7 @@ Traceback (most recent call first):
 (gdb)
 ```
 
-That works! It does become a bit arduous though, since we hit this watchpoint multiple times. Also, if we had a larger codebase, eg a large test suite, doing this interactively would be time consuming. Luckily, `gdb` is scriptable. I've included a `gdb` script in `gdb_cmd`:
+That works! Doing this interactively does get a bit arduous though. We hit this watchpoint multiple times for our single http request. If we were looking at a larger codebase, eg a large test suite, doing this interactively would be time consuming. Luckily, `gdb` is scriptable. I've included a `gdb` script in `gdb_cmd`:
 
 ```
 set pagination off
@@ -221,8 +221,8 @@ You can run it using:
 
 and then examine `output.txt`.
 
-Note `gdb` has a flag, `-x` that lets use execute scripts, eg `gdb -x ./gdb_cmd --args /usr/bin/python3 ./demo.py`. I've chosen to use `<` to read the input because this will stream the commands 1 at a time and continue even if there is a failure. In our case, the `continue` command will fail after we reach the end of the `demo.py` and the script will stop leaving us in `gdb`. Using `<` is a hack to allow us to continue and exit `gdb` even though we hit this error.
+Note `gdb` has a flag, `-x` that lets us execute scripts, eg `gdb -x ./gdb_cmd --args /usr/bin/python3 ./demo.py`. I've chosen to use `<` to read the input because this will stream the commands 1 at a time and continue even if there is a failure. In our case, the `continue` command will fail after we reach the end of the `demo.py` and the script will stop, leaving us in `gdb`. Using `<` is a hack that allows us to execute the next expression and exit `gdb` even though we hit this error.
 
 # Conclusion
 
-We have a scriptable way of detecting every network request is being made in a Python process and to get its associated backtrace using `gdb`. This methodology can be used to instrument any syscall. In addition we discussed using `strace` to see examine all the syscalls from a process. Happy debugging!
+We have a scriptable way of detecting every network request being made in a Python process and a way to get its associated backtrace using `gdb`. This methodology can be used to instrument any syscall. In addition, we discussed using `strace` to see examine all the syscalls from a process. Happy debugging!

@@ -80,7 +80,7 @@
         <div class="span8 offset2 article-content">
             
             <h1>How to trace network request or Using gdb to instrument syscalls made from&nbsp;Python</h1>
-<p>There have been a number of times I&#8217;ve inherited some Python project and I have no idea where network requests are being made. For example, I&#8217;ve inherited large unit testing suites where some, but not all, network requests are being mocked. Another example is dependencies making surprising network requests. The goals of this post&nbsp;is:</p>
+<p>There have been a number of times I&#8217;ve inherited some Python project and I have no idea where network requests are being made. For example, I&#8217;ve inherited large unit testing suites where some, but not all, network requests are being mocked. Another example is dependencies making surprising network requests. The goals of this post&nbsp;are:</p>
 <ul>
 <li>Provide a tool to trackdown network requests in a Python&nbsp;process</li>
 <li>Determine the context of the network request, that is the Python backtrace. This can be useful because if we want to find tests missing&nbsp;mocks.</li>
@@ -106,7 +106,7 @@
 </code></pre></div>
 
 <p>We are going to use <code>gdb</code> to catch a network syscall and print a backtrace when it occurs. To enable <code>gdb</code> to print Python symbols and backtraces we have installed the debug build of Python into our Docker image. We have also installed some other tools to help us explore and do some text processing: <code>ps</code>, <code>strace</code>, and <code>perl</code>.</p>
-<p>Also included in the docker image is a Python script <code>demo.py</code> that makes a single http request and prints the&nbsp;results:</p>
+<p>Also included in the docker image is a Python script, <code>demo.py</code>, that makes a single http request and prints the&nbsp;results:</p>
 <div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">urllib.request</span>
 
 <span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
@@ -117,11 +117,11 @@
     <span class="n">main</span><span class="p">()</span>
 </code></pre></div>
 
-<p>You can run by typing this command on the docker bash&nbsp;console:</p>
+<p>You can run this script by typing this command on the docker bash&nbsp;console:</p>
 <div class="highlight"><pre><span></span><code>python3 ./demo.py
 </code></pre></div>
 
-<p>If you want to see every syscall are made during the execution of the script you can use <code>strace</code>:</p>
+<p>If you want to see every syscall that is made during the execution of the script you can use <code>strace</code>:</p>
 <div class="highlight"><pre><span></span><code>strace python3 demo.py
 </code></pre></div>
 
@@ -137,7 +137,7 @@
 <span class="o">...</span><span class="w"> </span><span class="n">LOTS</span><span class="w"> </span><span class="n">OF</span><span class="w"> </span><span class="n">OUTPUT</span><span class="w"> </span><span class="o">...</span>
 </code></pre></div>
 
-<p>Wow, that&#8217;s a lot of output. Glacing through the output we see each line begins with <code>&lt;syscall_name&gt;(&lt;arguments&gt;) ...</code>. To get a clearer view of what syscalls are being made we can count the number of times each syscall being made and print them&nbsp;out:</p>
+<p>Wow, that&#8217;s a lot of output. Glacing through the output we see each line begins with <code>&lt;syscall_name&gt;(&lt;arguments&gt;) ...</code>. To get a clearer view of what syscalls are being made we can parse the <code>strace</code> output and count the number of times each syscall is&nbsp;called:</p>
 <div class="highlight"><pre><span></span><code><span class="n">strace</span><span class="w"> </span><span class="n">python3</span><span class="w"> </span><span class="n">demo</span><span class="p">.</span><span class="n">py</span><span class="w"> </span><span class="mi">2</span><span class="o">&gt;&amp;</span><span class="mi">1</span><span class="w"> </span><span class="o">&gt;/</span><span class="n">dev</span><span class="o">/</span><span class="k">null</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">perl</span><span class="w"> </span><span class="o">-</span><span class="n">lane</span><span class="w"> </span><span class="s1">&#39;@a = split(/\(/, $_); print($a[0])&#39;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">sort</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">uniq</span><span class="w"> </span><span class="o">-</span><span class="n">c</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">sort</span>
 </code></pre></div>
 
@@ -247,7 +247,7 @@
 <span class="p">(</span><span class="nx">gdb</span><span class="p">)</span>
 </code></pre></div>
 
-<p>That works! It does become a bit arduous though, since we hit this watchpoint multiple times. Also, if we had a larger codebase, eg a large test suite, doing this interactively would be time consuming. Luckily, <code>gdb</code> is scriptable. I&#8217;ve included a <code>gdb</code> script in <code>gdb_cmd</code>:</p>
+<p>That works! Doing this interactively does get a bit arduous though. We hit this watchpoint multiple times for our single http request. If we were looking at a larger codebase, eg a large test suite, doing this interactively would be time consuming. Luckily, <code>gdb</code> is scriptable. I&#8217;ve included a <code>gdb</code> script in <code>gdb_cmd</code>:</p>
 <div class="highlight"><pre><span></span><code><span class="nv">set</span><span class="w"> </span><span class="nv">pagination</span><span class="w"> </span><span class="nv">off</span>
 
 <span class="nv">catch</span><span class="w"> </span><span class="nv">syscall</span><span class="w"> </span><span class="nv">sendmmsg</span>
@@ -267,9 +267,9 @@
 </code></pre></div>
 
 <p>and then examine <code>output.txt</code>.</p>
-<p>Note <code>gdb</code> has a flag, <code>-x</code> that lets use execute scripts, eg <code>gdb -x ./gdb_cmd --args /usr/bin/python3 ./demo.py</code>. I&#8217;ve chosen to use <code>&lt;</code> to read the input because this will stream the commands 1 at a time and continue even if there is a failure. In our case, the <code>continue</code> command will fail after we reach the end of the <code>demo.py</code> and the script will stop leaving us in <code>gdb</code>. Using <code>&lt;</code> is a hack to allow us to continue and exit <code>gdb</code> even though we hit this&nbsp;error.</p>
+<p>Note <code>gdb</code> has a flag, <code>-x</code> that lets us execute scripts, eg <code>gdb -x ./gdb_cmd --args /usr/bin/python3 ./demo.py</code>. I&#8217;ve chosen to use <code>&lt;</code> to read the input because this will stream the commands 1 at a time and continue even if there is a failure. In our case, the <code>continue</code> command will fail after we reach the end of the <code>demo.py</code> and the script will stop, leaving us in <code>gdb</code>. Using <code>&lt;</code> is a hack that allows us to execute the next expression and exit <code>gdb</code> even though we hit this&nbsp;error.</p>
 <h1>Conclusion</h1>
-<p>We have a scriptable way of detecting every network request is being made in a Python process and to get its associated backtrace using <code>gdb</code>. This methodology can be used to instrument any syscall. In addition we discussed using <code>strace</code> to see examine all the syscalls from a process. Happy&nbsp;debugging!</p>
+<p>We have a scriptable way of detecting every network request being made in a Python process and a way to get its associated backtrace using <code>gdb</code>. This methodology can be used to instrument any syscall. In addition, we discussed using <code>strace</code> to see examine all the syscalls from a process. Happy&nbsp;debugging!</p>
 
 
              
