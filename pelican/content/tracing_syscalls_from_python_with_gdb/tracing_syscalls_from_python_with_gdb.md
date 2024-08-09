@@ -225,4 +225,4 @@ Note `gdb` has a flag, `-x` that lets use execute scripts, eg `gdb -x ./gdb_cmd 
 
 # Conclusion
 
-We have a scriptable way of detecting every network request is being made in a Python process and to get it's associated backtrace using `gdb`. This methodology can be used to instrument any syscall. In addition we discussed using `strace` to see examine all the syscalls from a process. Happy debugging!
+We have a scriptable way of detecting every network request is being made in a Python process and to get its associated backtrace using `gdb`. This methodology can be used to instrument any syscall. In addition we discussed using `strace` to see examine all the syscalls from a process. Happy debugging!

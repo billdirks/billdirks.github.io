@@ -269,7 +269,7 @@
 <p>and then examine <code>output.txt</code>.</p>
 <p>Note <code>gdb</code> has a flag, <code>-x</code> that lets use execute scripts, eg <code>gdb -x ./gdb_cmd --args /usr/bin/python3 ./demo.py</code>. I&#8217;ve chosen to use <code>&lt;</code> to read the input because this will stream the commands 1 at a time and continue even if there is a failure. In our case, the <code>continue</code> command will fail after we reach the end of the <code>demo.py</code> and the script will stop leaving us in <code>gdb</code>. Using <code>&lt;</code> is a hack to allow us to continue and exit <code>gdb</code> even though we hit this&nbsp;error.</p>
 <h1>Conclusion</h1>
-<p>We have a scriptable way of detecting every network request is being made in a Python process and to get it&#8217;s associated backtrace using <code>gdb</code>. This methodology can be used to instrument any syscall. In addition we discussed using <code>strace</code> to see examine all the syscalls from a process. Happy&nbsp;debugging!</p>
+<p>We have a scriptable way of detecting every network request is being made in a Python process and to get its associated backtrace using <code>gdb</code>. This methodology can be used to instrument any syscall. In addition we discussed using <code>strace</code> to see examine all the syscalls from a process. Happy&nbsp;debugging!</p>
 
 
              
