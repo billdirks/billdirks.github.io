@@ -17,16 +17,16 @@
 
 <meta name="keywords" content="python, debugging, python, " />
 
-<meta property="og:title" content="Tracing syscalls from Python with gdb "/>
+<meta property="og:title" content="How to trace a network request, or Using gdb to instrument syscalls made from Python "/>
 <meta property="og:url" content="https://billdirks.com/tracing-python-syscalls-with-gdb.html" />
-<meta property="og:description" content="Tracing syscalls made from Python" />
+<meta property="og:description" content="Tracing syscalls from Python with gdb" />
 <meta property="og:site_name" content="bill&#39;s mumbles" />
 <meta property="og:article:author" content="bill dirks" />
 <meta property="og:article:published_time" content="2024-08-09T00:00:00-07:00" />
-<meta name="twitter:title" content="Tracing syscalls from Python with gdb ">
-<meta name="twitter:description" content="Tracing syscalls made from Python">
+<meta name="twitter:title" content="How to trace a network request, or Using gdb to instrument syscalls made from Python ">
+<meta name="twitter:description" content="Tracing syscalls from Python with gdb">
 
-        <title>Tracing syscalls from Python with gdb  · bill&#39;s mumbles
+        <title>How to trace a network request, or Using gdb to instrument syscalls made from Python  · bill&#39;s mumbles
 </title>
         <link href="https://billdirks.com/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="bill&#39;s mumbles - Full Atom Feed" />
 
@@ -70,7 +70,7 @@
     <header class="page-header span10 offset2">
         <h1>
             <a href="https://billdirks.com/tracing-python-syscalls-with-gdb.html">
-                Tracing syscalls from Python with&nbsp;gdb
+                How to trace a network request, or Using gdb to instrument syscalls made from&nbsp;Python
             </a>
         </h1>
     </header>
@@ -79,8 +79,8 @@
 <div class="row-fluid">
         <div class="span8 offset2 article-content">
             
-            <h1>How to trace network request or Using gdb to instrument syscalls made from&nbsp;Python</h1>
-<p>There have been a number of times I&#8217;ve inherited some Python project and I have no idea where network requests are being made. For example, I&#8217;ve inherited large unit testing suites where some, but not all, network requests are being mocked. Another example is dependencies making surprising network requests. The goals of this post&nbsp;are:</p>
+            <h1>Motivation</h1>
+<p>Several times in my career I&#8217;ve inherited a Python project and have no idea where network requests are being made. For example, I&#8217;ve inherited large unit testing suites where some, but not all, network requests are being mocked. Another example is dependencies making surprising network requests. The goals of this post&nbsp;are:</p>
 <ul>
 <li>Provide a tool to trackdown network requests in a Python&nbsp;process</li>
 <li>Determine the context of the network request, that is the Python backtrace. This can be useful because if we want to find tests missing&nbsp;mocks.</li>
@@ -101,7 +101,7 @@
 <li>We get to learn about catching syscalls from Python in&nbsp;general</li>
 </ul>
 <h1>Methodology</h1>
-<p>I&#8217;ve built a docker image, <code>bdirks/pytrace</code>, which is available on <a href="https://hub.docker.com/repository/docker/bdirks/pytrace/general">Docker Hub</a> which allows you to follow along with the code in this section as well as use for your own debugging needs. The <a href="https://github.com/billdirks/blog-code/blob/main/tracing_syscalls_from_python_with_gdb">Dockerfile and supporting scripts can be found here</a>. To launch the docker image,&nbsp;run:</p>
+<p>I&#8217;ve built a docker image, <code>bdirks/pytrace</code>, available on <a href="https://hub.docker.com/repository/docker/bdirks/pytrace/general">Docker Hub</a>, which allows you to follow along with the code in this section as well as use for your own debugging needs. The <a href="https://github.com/billdirks/blog-code/blob/main/tracing_syscalls_from_python_with_gdb">Dockerfile and supporting scripts can be found here</a>. To launch the docker image,&nbsp;run:</p>
 <div class="highlight"><pre><span></span><code>docker run -it --rm bdirks/pytrace bash
 </code></pre></div>
 
@@ -137,7 +137,7 @@
 <span class="o">...</span><span class="w"> </span><span class="n">LOTS</span><span class="w"> </span><span class="n">OF</span><span class="w"> </span><span class="n">OUTPUT</span><span class="w"> </span><span class="o">...</span>
 </code></pre></div>
 
-<p>Wow, that&#8217;s a lot of output. Glacing through the output we see each line begins with <code>&lt;syscall_name&gt;(&lt;arguments&gt;) ...</code>. To get a clearer view of what syscalls are being made we can parse the <code>strace</code> output and count the number of times each syscall is&nbsp;called:</p>
+<p>Wow, that&#8217;s a lot of output. Glancing through the output we see each line begins with <code>&lt;syscall_name&gt;(&lt;arguments&gt;) ...</code>. To get a clearer view of what syscalls are being made we can parse the <code>strace</code> output and count the number of times each syscall is&nbsp;called:</p>
 <div class="highlight"><pre><span></span><code><span class="n">strace</span><span class="w"> </span><span class="n">python3</span><span class="w"> </span><span class="n">demo</span><span class="p">.</span><span class="n">py</span><span class="w"> </span><span class="mi">2</span><span class="o">&gt;&amp;</span><span class="mi">1</span><span class="w"> </span><span class="o">&gt;/</span><span class="n">dev</span><span class="o">/</span><span class="k">null</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">perl</span><span class="w"> </span><span class="o">-</span><span class="n">lane</span><span class="w"> </span><span class="s1">&#39;@a = split(/\(/, $_); print($a[0])&#39;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">sort</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">uniq</span><span class="w"> </span><span class="o">-</span><span class="n">c</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">sort</span>
 </code></pre></div>
 
@@ -267,7 +267,7 @@
 </code></pre></div>
 
 <p>and then examine <code>output.txt</code>.</p>
-<p>Note <code>gdb</code> has a flag, <code>-x</code> that lets us execute scripts, eg <code>gdb -x ./gdb_cmd --args /usr/bin/python3 ./demo.py</code>. I&#8217;ve chosen to use <code>&lt;</code> to read the input because this will stream the commands 1 at a time and continue even if there is a failure. In our case, the <code>continue</code> command will fail after we reach the end of the <code>demo.py</code> and the script will stop, leaving us in <code>gdb</code>. Using <code>&lt;</code> is a hack that allows us to execute the next expression and exit <code>gdb</code> even though we hit this&nbsp;error.</p>
+<p>Note <code>gdb</code> has a flag, <code>-x</code> that lets us execute scripts, eg <code>gdb -x ./gdb_cmd --args /usr/bin/python3 ./demo.py</code>. I&#8217;ve chosen to use <code>&lt;</code> to read the input because this will stream the commands one at a time and continue even if there is a failure. In our case, the <code>continue</code> command will fail after we reach the end of the <code>demo.py</code> and the script will stop, leaving us in <code>gdb</code>. Using <code>&lt;</code> is a hack that allows us to execute the next expression and exit <code>gdb</code> even though we hit this&nbsp;error.</p>
 <h1>Conclusion</h1>
 <p>We have a scriptable way of detecting every network request being made in a Python process and a way to get its associated backtrace using <code>gdb</code>. This methodology can be used to instrument any syscall. In addition, we discussed using <code>strace</code> to see examine all the syscalls from a process. Happy&nbsp;debugging!</p>
 

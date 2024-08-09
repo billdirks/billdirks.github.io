@@ -5,7 +5,8 @@ Put `.md` file in `pelican/content/<my_blog_dir>`
 To serve locally:
 
 ```
-make html && make serve
+cd pelican
+make clean && make html && make serve
 ```
 
 

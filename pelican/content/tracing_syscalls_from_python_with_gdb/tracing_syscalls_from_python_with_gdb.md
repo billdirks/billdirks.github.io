@@ -1,14 +1,14 @@
-Title: Tracing syscalls from Python with gdb
+Title: How to trace a network request, or Using gdb to instrument syscalls made from Python
 Date: 2024-08-09
 Category: python
 Tags: python, debugging
 Slug: tracing-python-syscalls-with-gdb
-Summary: Tracing syscalls made from Python
+Summary: Tracing syscalls from Python with gdb
 
 
-# How to trace network request or Using gdb to instrument syscalls made from Python
+# Motivation
 
-There have been a number of times I've inherited some Python project and I have no idea where network requests are being made. For example, I've inherited large unit testing suites where some, but not all, network requests are being mocked. Another example is dependencies making surprising network requests. The goals of this post are:
+Several times in my career I've inherited a Python project and have no idea where network requests are being made. For example, I've inherited large unit testing suites where some, but not all, network requests are being mocked. Another example is dependencies making surprising network requests. The goals of this post are:
 
 * Provide a tool to trackdown network requests in a Python process
 * Determine the context of the network request, that is the Python backtrace. This can be useful because if we want to find tests missing mocks.
@@ -33,7 +33,7 @@ For this post I explore a different solution, using `gdb`. This has some benefit
 
 # Methodology
 
-I've built a docker image, `bdirks/pytrace`, which is available on [Docker Hub](https://hub.docker.com/repository/docker/bdirks/pytrace/general) which allows you to follow along with the code in this section as well as use for your own debugging needs. The [Dockerfile and supporting scripts can be found here](https://github.com/billdirks/blog-code/blob/main/tracing_syscalls_from_python_with_gdb). To launch the docker image, run:
+I've built a docker image, `bdirks/pytrace`, available on [Docker Hub](https://hub.docker.com/repository/docker/bdirks/pytrace/general), which allows you to follow along with the code in this section as well as use for your own debugging needs. The [Dockerfile and supporting scripts can be found here](https://github.com/billdirks/blog-code/blob/main/tracing_syscalls_from_python_with_gdb). To launch the docker image, run:
 
 ```
 docker run -it --rm bdirks/pytrace bash
@@ -79,7 +79,7 @@ close(3)                                = 0
 ... LOTS OF OUTPUT ...
 ```
 
-Wow, that's a lot of output. Glacing through the output we see each line begins with `<syscall_name>(<arguments>) ... `. To get a clearer view of what syscalls are being made we can parse the `strace` output and count the number of times each syscall is called:
+Wow, that's a lot of output. Glancing through the output we see each line begins with `<syscall_name>(<arguments>) ... `. To get a clearer view of what syscalls are being made we can parse the `strace` output and count the number of times each syscall is called:
 
 ```
 strace python3 demo.py 2>&1 >/dev/null | perl -lane '@a = split(/\(/, $_); print($a[0])' | sort | uniq -c | sort
@@ -221,7 +221,7 @@ You can run it using:
 
 and then examine `output.txt`.
 
-Note `gdb` has a flag, `-x` that lets us execute scripts, eg `gdb -x ./gdb_cmd --args /usr/bin/python3 ./demo.py`. I've chosen to use `<` to read the input because this will stream the commands 1 at a time and continue even if there is a failure. In our case, the `continue` command will fail after we reach the end of the `demo.py` and the script will stop, leaving us in `gdb`. Using `<` is a hack that allows us to execute the next expression and exit `gdb` even though we hit this error.
+Note `gdb` has a flag, `-x` that lets us execute scripts, eg `gdb -x ./gdb_cmd --args /usr/bin/python3 ./demo.py`. I've chosen to use `<` to read the input because this will stream the commands one at a time and continue even if there is a failure. In our case, the `continue` command will fail after we reach the end of the `demo.py` and the script will stop, leaving us in `gdb`. Using `<` is a hack that allows us to execute the next expression and exit `gdb` even though we hit this error.
 
 # Conclusion
 
