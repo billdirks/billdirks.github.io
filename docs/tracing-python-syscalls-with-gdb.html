@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="stylesheet" type="text/css" href="https://billdirks.com/theme/css/elegant.prod.9e9d5ce754.css" media="screen">
+        <link rel="stylesheet" type="text/css" href="https://billdirks.com/theme/css/custom.css" media="screen">
+
+        <link rel="dns-prefetch" href="//fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com/" crossorigin>
+
+        <meta name="author" content="bill dirks" />
+
+        <meta property="og:type" content="article" />
+        <meta name="twitter:card" content="summary">
+
+<meta name="keywords" content="python, debugging, python, " />
+
+<meta property="og:title" content="Tracing syscalls from Python with gdb "/>
+<meta property="og:url" content="https://billdirks.com/tracing-python-syscalls-with-gdb.html" />
+<meta property="og:description" content="Tracing syscalls made from Python" />
+<meta property="og:site_name" content="bill&#39;s mumbles" />
+<meta property="og:article:author" content="bill dirks" />
+<meta property="og:article:published_time" content="2024-08-09T00:00:00-07:00" />
+<meta name="twitter:title" content="Tracing syscalls from Python with gdb ">
+<meta name="twitter:description" content="Tracing syscalls made from Python">
+
+        <title>Tracing syscalls from Python with gdb  · bill&#39;s mumbles
+</title>
+        <link href="https://billdirks.com/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="bill&#39;s mumbles - Full Atom Feed" />
+
+
+
+        <link rel="shortcut icon" type="image/x-icon" href="https://billdirks.com/favicon.ico?">
+    </head>
+    <body>
+        <div id="content">
+            <div class="navbar navbar-static-top">
+                <div class="navbar-inner">
+                    <div class="container-fluid">
+                        <a class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
+                            <span class="icon-bar"></span>
+                            <span class="icon-bar"></span>
+                            <span class="icon-bar"></span>
+                        </a>
+                        <a class="brand" href="https://billdirks.com/"><span class=site-name>bill's mumbles</span></a>
+                        <div class="nav-collapse collapse">
+                            <ul class="nav pull-right top-menu">
+                                <li >
+                                    <a href=
+                                       https://billdirks.com
+                                    >Home</a>
+                                </li>
+                                <li ><a href="https://billdirks.com/pages/about.html">About</a></li>
+                                <li ><a href="https://billdirks.com/categories.html">Categories</a></li>
+                                <li ><a href="https://billdirks.com/tags.html">Tags</a></li>
+                                <li ><a href="https://billdirks.com/archives.html">Archives</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="container-fluid">
+                <div class="row-fluid">
+                    <div class="span1"></div>
+                    <div class="span10">
+<article itemscope>
+<div class="row-fluid">
+    <header class="page-header span10 offset2">
+        <h1>
+            <a href="https://billdirks.com/tracing-python-syscalls-with-gdb.html">
+                Tracing syscalls from Python with&nbsp;gdb
+            </a>
+        </h1>
+    </header>
+</div>
+
+<div class="row-fluid">
+        <div class="span8 offset2 article-content">
+            
+            <h1>How to trace network request or Using gdb to instrument syscalls made from&nbsp;Python</h1>
+<p>There have been a number of times I&#8217;ve inherited some Python project and I have no idea where network requests are being made. For example, I&#8217;ve inherited large unit testing suites where some, but not all, network requests are being mocked. Another example is dependencies making surprising network requests. The goals of this post&nbsp;is:</p>
+<ul>
+<li>Provide a tool to trackdown network requests in a Python&nbsp;process</li>
+<li>Determine the context of the network request, that is the Python backtrace. This can be useful because if we want to find tests missing&nbsp;mocks.</li>
+</ul>
+<p>The technique discussed here can be leveraged generally to trace syscalls from&nbsp;Python.</p>
+<h1>Strategy</h1>
+<p>There are different methods to track down network requests. There are 2 common ones I&nbsp;hear:</p>
+<ul>
+<li>Set up a network&nbsp;proxy</li>
+<li>Monkey patch the requests library (or some other library that is being&nbsp;used)</li>
+</ul>
+<p>Neither approach gives us exactly what we want. Setting up a network proxy can tell us requests are being made but don&#8217;t directly tell us where in our Python code those calls come from. Monkey patching assumes we know what library/libraries are being used and we know what to&nbsp;patch.</p>
+<p>For this post I explore a different solution, using <code>gdb</code>. This has some&nbsp;benefits:</p>
+<ul>
+<li>This lets us observe low level events so we don&#8217;t miss any network requests. In particular we will instrument syscalls made when a network request&nbsp;occurs.</li>
+<li><code>gdb</code> can print the Python&nbsp;backtrace</li>
+<li>We can isolate instrumentation to the process of&nbsp;interest</li>
+<li>We get to learn about catching syscalls from Python in&nbsp;general</li>
+</ul>
+<h1>Methodology</h1>
+<p>I&#8217;ve built a docker image, <code>bdirks/pytrace</code>, which is available on <a href="https://hub.docker.com/repository/docker/bdirks/pytrace/general">Docker Hub</a> which allows you to follow along with the code in this section as well as use for your own debugging needs. The <a href="https://github.com/billdirks/blog-code/blob/main/tracing_syscalls_from_python_with_gdb">Dockerfile and supporting scripts can be found here</a>. To launch the docker image,&nbsp;run:</p>
+<div class="highlight"><pre><span></span><code>docker run -it --rm bdirks/pytrace bash
+</code></pre></div>
+
+<p>We are going to use <code>gdb</code> to catch a network syscall and print a backtrace when it occurs. To enable <code>gdb</code> to print Python symbols and backtraces we have installed the debug build of Python into our Docker image. We have also installed some other tools to help us explore and do some text processing: <code>ps</code>, <code>strace</code>, and <code>perl</code>.</p>
+<p>Also included in the docker image is a Python script <code>demo.py</code> that makes a single http request and prints the&nbsp;results:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">urllib.request</span>
+
+<span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+    <span class="n">contents</span> <span class="o">=</span> <span class="n">urllib</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">urlopen</span><span class="p">(</span><span class="s2">&quot;http://example.com&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">contents</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">main</span><span class="p">()</span>
+</code></pre></div>
+
+<p>You can run by typing this command on the docker bash&nbsp;console:</p>
+<div class="highlight"><pre><span></span><code>python3 ./demo.py
+</code></pre></div>
+
+<p>If you want to see every syscall are made during the execution of the script you can use <code>strace</code>:</p>
+<div class="highlight"><pre><span></span><code>strace python3 demo.py
+</code></pre></div>
+
+<p>Output:</p>
+<div class="highlight"><pre><span></span><code><span class="n">execve</span><span class="p">(</span><span class="s2">&quot;/usr/bin/python3&quot;</span><span class="p">,</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;python3&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;demo.py&quot;</span><span class="p">],</span><span class="w"> </span><span class="mh">0xffffec396d48</span><span class="w"> </span><span class="o">/*</span><span class="w"> </span><span class="mi">7</span><span class="w"> </span><span class="n">vars</span><span class="w"> </span><span class="o">*/</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span>
+<span class="n">brk</span><span class="p">(</span><span class="n">NULL</span><span class="p">)</span><span class="w">                               </span><span class="o">=</span><span class="w"> </span><span class="mh">0x2964000</span>
+<span class="n">mmap</span><span class="p">(</span><span class="n">NULL</span><span class="p">,</span><span class="w"> </span><span class="mi">8192</span><span class="p">,</span><span class="w"> </span><span class="n">PROT_READ</span><span class="o">|</span><span class="n">PROT_WRITE</span><span class="p">,</span><span class="w"> </span><span class="n">MAP_PRIVATE</span><span class="o">|</span><span class="n">MAP_ANONYMOUS</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0xffffa9746000</span>
+<span class="n">faccessat</span><span class="p">(</span><span class="n">AT_FDCWD</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;/etc/ld.so.preload&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">R_OK</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="w"> </span><span class="n">ENOENT</span><span class="w"> </span><span class="p">(</span><span class="n">No</span><span class="w"> </span><span class="n">such</span><span class="w"> </span><span class="n">file</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="n">directory</span><span class="p">)</span>
+<span class="n">openat</span><span class="p">(</span><span class="n">AT_FDCWD</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;/etc/ld.so.cache&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">O_RDONLY</span><span class="o">|</span><span class="n">O_CLOEXEC</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3</span>
+<span class="n">newfstatat</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;&quot;</span><span class="p">,</span><span class="w"> </span><span class="p">{</span><span class="n">st_mode</span><span class="o">=</span><span class="n">S_IFREG</span><span class="o">|</span><span class="mi">0644</span><span class="p">,</span><span class="w"> </span><span class="n">st_size</span><span class="o">=</span><span class="mi">19686</span><span class="p">,</span><span class="w"> </span><span class="o">...</span><span class="p">},</span><span class="w"> </span><span class="n">AT_EMPTY_PATH</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span>
+<span class="n">mmap</span><span class="p">(</span><span class="n">NULL</span><span class="p">,</span><span class="w"> </span><span class="mi">19686</span><span class="p">,</span><span class="w"> </span><span class="n">PROT_READ</span><span class="p">,</span><span class="w"> </span><span class="n">MAP_PRIVATE</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0xffffa9741000</span>
+<span class="n">close</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span><span class="w">                                </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span>
+<span class="o">...</span><span class="w"> </span><span class="n">LOTS</span><span class="w"> </span><span class="n">OF</span><span class="w"> </span><span class="n">OUTPUT</span><span class="w"> </span><span class="o">...</span>
+</code></pre></div>
+
+<p>Wow, that&#8217;s a lot of output. Glacing through the output we see each line begins with <code>&lt;syscall_name&gt;(&lt;arguments&gt;) ...</code>. To get a clearer view of what syscalls are being made we can count the number of times each syscall being made and print them&nbsp;out:</p>
+<div class="highlight"><pre><span></span><code><span class="n">strace</span><span class="w"> </span><span class="n">python3</span><span class="w"> </span><span class="n">demo</span><span class="p">.</span><span class="n">py</span><span class="w"> </span><span class="mi">2</span><span class="o">&gt;&amp;</span><span class="mi">1</span><span class="w"> </span><span class="o">&gt;/</span><span class="n">dev</span><span class="o">/</span><span class="k">null</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">perl</span><span class="w"> </span><span class="o">-</span><span class="n">lane</span><span class="w"> </span><span class="s1">&#39;@a = split(/\(/, $_); print($a[0])&#39;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">sort</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">uniq</span><span class="w"> </span><span class="o">-</span><span class="n">c</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">sort</span>
+</code></pre></div>
+
+<p>Output:</p>
+<div class="highlight"><pre><span></span><code><span class="w">  </span><span class="mi">1</span><span class="w"> </span><span class="o">+++</span><span class="w"> </span><span class="nx">exited</span><span class="w"> </span><span class="nx">with</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="o">+++</span>
+<span class="w">  </span><span class="mi">1</span><span class="w"> </span><span class="nx">bind</span>
+<span class="w">  </span><span class="mi">1</span><span class="w"> </span><span class="nx">epoll_create1</span>
+<span class="w">  </span><span class="mi">1</span><span class="w"> </span><span class="nx">execve</span>
+<span class="w">  </span><span class="mi">1</span><span class="w"> </span><span class="nx">exit_group</span>
+<span class="w">  </span><span class="mi">1</span><span class="w"> </span><span class="nx">faccessat</span>
+<span class="w">  </span><span class="mi">1</span><span class="w"> </span><span class="nx">getegid</span>
+<span class="w">  </span><span class="mi">1</span><span class="w"> </span><span class="nx">geteuid</span>
+<span class="w">  </span><span class="mi">1</span><span class="w"> </span><span class="nx">getgid</span>
+<span class="w">  </span><span class="mi">1</span><span class="w"> </span><span class="nx">gettid</span>
+<span class="w">  </span><span class="mi">1</span><span class="w"> </span><span class="nx">getuid</span>
+<span class="w">  </span><span class="mi">1</span><span class="w"> </span><span class="nx">prlimit64</span>
+<span class="w">  </span><span class="mi">1</span><span class="w"> </span><span class="nx">rseq</span>
+<span class="w">  </span><span class="mi">1</span><span class="w"> </span><span class="nx">sendmmsg</span>
+<span class="w">  </span><span class="mi">1</span><span class="w"> </span><span class="nx">set_robust_list</span>
+<span class="w">  </span><span class="mi">1</span><span class="w"> </span><span class="nx">set_tid_address</span>
+<span class="w">  </span><span class="mi">1</span><span class="w"> </span><span class="nx">sysinfo</span>
+<span class="w">  </span><span class="mi">1</span><span class="w"> </span><span class="nx">uname</span>
+<span class="w">  </span><span class="mi">1</span><span class="w"> </span><span class="nx">write</span>
+<span class="w">  </span><span class="mi">2</span><span class="w"> </span><span class="nx">getcwd</span>
+<span class="w">  </span><span class="mi">2</span><span class="w"> </span><span class="nx">getsockname</span>
+<span class="w">  </span><span class="mi">2</span><span class="w"> </span><span class="nx">rt_sigprocmask</span>
+<span class="w">  </span><span class="mi">2</span><span class="w"> </span><span class="nx">sendto</span>
+<span class="w">  </span><span class="mi">2</span><span class="w"> </span><span class="nx">setsockopt</span>
+<span class="w">  </span><span class="mi">3</span><span class="w"> </span><span class="nx">getrandom</span>
+<span class="w">  </span><span class="mi">3</span><span class="w"> </span><span class="nx">ppoll</span>
+<span class="w">  </span><span class="mi">3</span><span class="w"> </span><span class="nx">recvfrom</span>
+<span class="w">  </span><span class="mi">3</span><span class="w"> </span><span class="nx">recvmsg</span>
+<span class="w">  </span><span class="mi">4</span><span class="w"> </span><span class="nx">fcntl</span>
+<span class="w">  </span><span class="mi">4</span><span class="w"> </span><span class="nx">readlinkat</span>
+<span class="w">  </span><span class="mi">6</span><span class="w"> </span><span class="nx">connect</span>
+<span class="w">  </span><span class="mi">7</span><span class="w"> </span><span class="nx">socket</span>
+<span class="w"> </span><span class="mi">16</span><span class="w"> </span><span class="nx">futex</span>
+<span class="w"> </span><span class="mi">25</span><span class="w"> </span><span class="nx">brk</span>
+<span class="w"> </span><span class="mi">26</span><span class="w"> </span><span class="nx">getdents64</span>
+<span class="w"> </span><span class="mi">26</span><span class="w"> </span><span class="nx">mprotect</span>
+<span class="w"> </span><span class="mi">32</span><span class="w"> </span><span class="nx">munmap</span>
+<span class="w"> </span><span class="mi">56</span><span class="w"> </span><span class="nx">mmap</span>
+<span class="w"> </span><span class="mi">68</span><span class="w"> </span><span class="nx">rt_sigaction</span>
+<span class="w"> </span><span class="mi">76</span><span class="w"> </span><span class="nx">ioctl</span>
+<span class="mi">114</span><span class="w"> </span><span class="nx">close</span>
+<span class="mi">114</span><span class="w"> </span><span class="nx">openat</span>
+<span class="mi">147</span><span class="w"> </span><span class="nx">lseek</span>
+<span class="mi">165</span><span class="w"> </span><span class="nx">read</span>
+<span class="mi">503</span><span class="w"> </span><span class="nx">newfstatat</span>
+</code></pre></div>
+
+<p>Some syscalls with interesting sounding names are <code>connect</code> and <code>sendmmsg</code>. We can learn more about these by using <code>man</code>. For example, <code>man connect</code>, outputs a <code>NAME</code> section that reads <code>connect - initiate a connection on a socket</code> and <code>man sendmmsg</code> outputs <code>sendmmsg - send multiple messages on a socket</code>. Looking at the raw <code>strace</code> output we see what looks like a message being sent to&nbsp;example.com:</p>
+<div class="highlight"><pre><span></span><code>sendmmsg(... msg_iov=[{iov_base=&quot;\276\272\1\0\0\1\0\0\0\0\0\0\7example\3com\0\0\1\0\1&quot;, ...
+</code></pre></div>
+
+<p>We can use <code>gdb</code> interactively to catch this syscall and print the&nbsp;backtrace:</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="nx">gdb</span><span class="w"> </span><span class="o">--</span><span class="nx">args</span><span class="w"> </span><span class="nx">python3</span><span class="w"> </span><span class="nx">demo</span><span class="p">.</span><span class="nx">py</span>
+<span class="p">(</span><span class="nx">gdb</span><span class="p">)</span><span class="w"> </span><span class="nx">catch</span><span class="w"> </span><span class="nx">syscall</span><span class="w"> </span><span class="nx">sendmmsg</span>
+<span class="nx">Catchpoint</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">(</span><span class="nx">syscall</span><span class="w"> </span><span class="err">&#39;</span><span class="nx">sendmmsg</span><span class="err">&#39;</span><span class="w"> </span><span class="p">[</span><span class="mi">269</span><span class="p">])</span>
+<span class="p">(</span><span class="nx">gdb</span><span class="p">)</span><span class="w"> </span><span class="nx">run</span>
+
+<span class="nx">Starting</span><span class="w"> </span><span class="nx">program</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="nx">usr</span><span class="o">/</span><span class="nx">bin</span><span class="o">/</span><span class="nx">python3</span><span class="w"> </span><span class="nx">demo</span><span class="p">.</span><span class="nx">py</span>
+<span class="p">[</span><span class="nx">Thread</span><span class="w"> </span><span class="nx">debugging</span><span class="w"> </span><span class="nx">using</span><span class="w"> </span><span class="nx">libthread_db</span><span class="w"> </span><span class="nx">enabled</span><span class="p">]</span>
+<span class="nx">Using</span><span class="w"> </span><span class="nx">host</span><span class="w"> </span><span class="nx">libthread_db</span><span class="w"> </span><span class="kn">library</span><span class="w"> </span><span class="s">&quot;/lib/aarch64-linux-gnu/libthread_db.so.1&quot;</span><span class="p">.</span>
+
+<span class="nx">Catchpoint</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">(</span><span class="nx">call</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">syscall</span><span class="w"> </span><span class="nx">sendmmsg</span><span class="p">),</span><span class="w"> </span><span class="mh">0x0</span><span class="mi">000</span><span class="nx">fffff7dcabcc</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="nx">__GI___sendmmsg</span><span class="w"> </span><span class="p">(</span><span class="nx">fd</span><span class="p">=</span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="nx">vmessages</span><span class="p">=</span><span class="nx">vmessages</span><span class="err">@</span><span class="nx">entry</span><span class="p">=</span><span class="mh">0xf</span><span class="nx">fffffffd9e8</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">vlen</span><span class="p">=</span><span class="nx">vlen</span><span class="err">@</span><span class="nx">entry</span><span class="p">=</span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="nx">flags</span><span class="p">=</span><span class="nx">flags</span><span class="err">@</span><span class="nx">entry</span><span class="p">=</span><span class="mi">16384</span><span class="p">)</span><span class="w"> </span><span class="nx">at</span><span class="w"> </span><span class="p">..</span><span class="o">/</span><span class="nx">sysdeps</span><span class="o">/</span><span class="nx">unix</span><span class="o">/</span><span class="nx">sysv</span><span class="o">/</span><span class="nx">linux</span><span class="o">/</span><span class="nx">sendmmsg</span><span class="p">.</span><span class="nx">c</span><span class="p">:</span><span class="mi">30</span>
+<span class="mi">30</span><span class="w">  </span><span class="p">..</span><span class="o">/</span><span class="nx">sysdeps</span><span class="o">/</span><span class="nx">unix</span><span class="o">/</span><span class="nx">sysv</span><span class="o">/</span><span class="nx">linux</span><span class="o">/</span><span class="nx">sendmmsg</span><span class="p">.</span><span class="nx">c</span><span class="p">:</span><span class="w"> </span><span class="nx">No</span><span class="w"> </span><span class="nx">such</span><span class="w"> </span><span class="nx">file</span><span class="w"> </span><span class="k">or</span><span class="w"> </span><span class="nx">directory</span><span class="p">.</span>
+
+<span class="p">(</span><span class="nx">gdb</span><span class="p">)</span><span class="w"> </span><span class="nx">py</span><span class="o">-</span><span class="nx">bt</span>
+
+<span class="nx">Traceback</span><span class="w"> </span><span class="p">(</span><span class="nx">most</span><span class="w"> </span><span class="nx">recent</span><span class="w"> </span><span class="nx">call</span><span class="w"> </span><span class="nx">first</span><span class="p">):</span>
+<span class="w">  </span><span class="p">&lt;</span><span class="nx">built</span><span class="o">-</span><span class="k">in</span><span class="w"> </span><span class="nx">method</span><span class="w"> </span><span class="nx">getaddrinfo</span><span class="w"> </span><span class="nx">of</span><span class="w"> </span><span class="nx">module</span><span class="w"> </span><span class="nx">object</span><span class="w"> </span><span class="nx">at</span><span class="w"> </span><span class="nx">remote</span><span class="w"> </span><span class="mh">0xf</span><span class="nx">ffff7512f20</span><span class="p">&gt;</span>
+<span class="w">  </span><span class="nx">File</span><span class="w"> </span><span class="s">&quot;/usr/lib/python3.11/socket.py&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">line</span><span class="w"> </span><span class="mi">962</span><span class="p">,</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="nx">getaddrinfo</span>
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="nx">res</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="nx">_socket</span><span class="p">.</span><span class="nx">getaddrinfo</span><span class="p">(</span><span class="nx">host</span><span class="p">,</span><span class="w"> </span><span class="nx">port</span><span class="p">,</span><span class="w"> </span><span class="nx">family</span><span class="p">,</span><span class="w"> </span><span class="k">type</span><span class="p">,</span><span class="w"> </span><span class="nx">proto</span><span class="p">,</span><span class="w"> </span><span class="nx">flags</span><span class="p">):</span>
+<span class="w">  </span><span class="nx">File</span><span class="w"> </span><span class="s">&quot;/usr/lib/python3.11/socket.py&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">line</span><span class="w"> </span><span class="mi">827</span><span class="p">,</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="nx">create_connection</span>
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="nx">res</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="nx">getaddrinfo</span><span class="p">(</span><span class="nx">host</span><span class="p">,</span><span class="w"> </span><span class="nx">port</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nx">SOCK_STREAM</span><span class="p">):</span>
+<span class="w">  </span><span class="nx">File</span><span class="w"> </span><span class="s">&quot;/usr/lib/python3.11/http/client.py&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">line</span><span class="w"> </span><span class="mi">941</span><span class="p">,</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="nx">connect</span>
+<span class="w">    </span><span class="kp">self</span><span class="p">.</span><span class="nx">sock</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="kp">self</span><span class="p">.</span><span class="nx">_create_connection</span><span class="p">(</span>
+<span class="w">  </span><span class="nx">File</span><span class="w"> </span><span class="s">&quot;/usr/lib/python3.11/http/client.py&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">line</span><span class="w"> </span><span class="mi">975</span><span class="p">,</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="nx">send</span>
+<span class="w">    </span><span class="kp">self</span><span class="p">.</span><span class="nx">connect</span><span class="p">()</span>
+<span class="w">  </span><span class="nx">File</span><span class="w"> </span><span class="s">&quot;/usr/lib/python3.11/http/client.py&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">line</span><span class="w"> </span><span class="mi">1037</span><span class="p">,</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="nx">_send_output</span>
+<span class="w">    </span><span class="kp">self</span><span class="p">.</span><span class="nx">send</span><span class="p">(</span><span class="nx">msg</span><span class="p">)</span>
+<span class="w">  </span><span class="nx">File</span><span class="w"> </span><span class="s">&quot;/usr/lib/python3.11/http/client.py&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">line</span><span class="w"> </span><span class="mi">1277</span><span class="p">,</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="nx">endheaders</span>
+<span class="w">    </span><span class="kp">self</span><span class="p">.</span><span class="nx">_send_output</span><span class="p">(</span><span class="nx">message_body</span><span class="p">,</span><span class="w"> </span><span class="nx">encode_chunked</span><span class="p">=</span><span class="nx">encode_chunked</span><span class="p">)</span>
+<span class="w">  </span><span class="nx">File</span><span class="w"> </span><span class="s">&quot;/usr/lib/python3.11/http/client.py&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">line</span><span class="w"> </span><span class="mi">1328</span><span class="p">,</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="nx">_send_request</span>
+<span class="w">    </span><span class="kp">self</span><span class="p">.</span><span class="nx">endheaders</span><span class="p">(</span><span class="nx">body</span><span class="p">,</span><span class="w"> </span><span class="nx">encode_chunked</span><span class="p">=</span><span class="nx">encode_chunked</span><span class="p">)</span>
+<span class="w">  </span><span class="nx">File</span><span class="w"> </span><span class="s">&quot;/usr/lib/python3.11/http/client.py&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">line</span><span class="w"> </span><span class="mi">1282</span><span class="p">,</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="nx">request</span>
+<span class="w">    </span><span class="kp">self</span><span class="p">.</span><span class="nx">_send_request</span><span class="p">(</span><span class="nx">method</span><span class="p">,</span><span class="w"> </span><span class="nx">url</span><span class="p">,</span><span class="w"> </span><span class="nx">body</span><span class="p">,</span><span class="w"> </span><span class="nx">headers</span><span class="p">,</span><span class="w"> </span><span class="nx">encode_chunked</span><span class="p">)</span>
+<span class="w">  </span><span class="nx">File</span><span class="w"> </span><span class="s">&quot;/usr/lib/python3.11/urllib/request.py&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">line</span><span class="w"> </span><span class="mi">1348</span><span class="p">,</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="nx">do_open</span>
+<span class="w">    </span><span class="nx">h</span><span class="p">.</span><span class="nx">request</span><span class="p">(</span><span class="nx">req</span><span class="p">.</span><span class="nx">get_method</span><span class="p">(),</span><span class="w"> </span><span class="nx">req</span><span class="p">.</span><span class="nx">selector</span><span class="p">,</span><span class="w"> </span><span class="nx">req</span><span class="p">.</span><span class="nx">data</span><span class="p">,</span><span class="w"> </span><span class="nx">headers</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">File</span><span class="w"> </span><span class="s">&quot;/usr/lib/python3.11/urllib/request.py&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">line</span><span class="w"> </span><span class="mi">1377</span><span class="p">,</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="nx">http_open</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="kp">self</span><span class="p">.</span><span class="nx">do_open</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">client</span><span class="p">.</span><span class="nx">HTTPConnection</span><span class="p">,</span><span class="w"> </span><span class="nx">req</span><span class="p">)</span>
+<span class="w">  </span><span class="nx">File</span><span class="w"> </span><span class="s">&quot;/usr/lib/python3.11/urllib/request.py&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">line</span><span class="w"> </span><span class="mi">496</span><span class="p">,</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="nx">_call_chain</span>
+<span class="w">    </span><span class="nx">result</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">func</span><span class="p">(</span><span class="o">*</span><span class="nx">args</span><span class="p">)</span>
+<span class="w">  </span><span class="nx">File</span><span class="w"> </span><span class="s">&quot;/usr/lib/python3.11/urllib/request.py&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">line</span><span class="w"> </span><span class="mi">536</span><span class="p">,</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="nx">_open</span>
+<span class="w">    </span><span class="nx">result</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="kp">self</span><span class="p">.</span><span class="nx">_call_chain</span><span class="p">(</span><span class="kp">self</span><span class="p">.</span><span class="nx">handle_open</span><span class="p">,</span><span class="w"> </span><span class="nx">protocol</span><span class="p">,</span><span class="w"> </span><span class="nx">protocol</span><span class="w"> </span><span class="o">+</span>
+<span class="w">  </span><span class="nx">File</span><span class="w"> </span><span class="s">&quot;/usr/lib/python3.11/urllib/request.py&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">line</span><span class="w"> </span><span class="mi">519</span><span class="p">,</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="nx">open</span>
+<span class="w">    </span><span class="nx">response</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="kp">self</span><span class="p">.</span><span class="nx">_open</span><span class="p">(</span><span class="nx">req</span><span class="p">,</span><span class="w"> </span><span class="nx">data</span><span class="p">)</span>
+<span class="w">  </span><span class="nx">File</span><span class="w"> </span><span class="s">&quot;/usr/lib/python3.11/urllib/request.py&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">line</span><span class="w"> </span><span class="mi">216</span><span class="p">,</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="nx">urlopen</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">opener</span><span class="p">.</span><span class="nx">open</span><span class="p">(</span><span class="nx">url</span><span class="p">,</span><span class="w"> </span><span class="nx">data</span><span class="p">,</span><span class="w"> </span><span class="nx">timeout</span><span class="p">)</span>
+<span class="w">  </span><span class="nx">File</span><span class="w"> </span><span class="s">&quot;//demo.py&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">line</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="nx">main</span>
+<span class="w">    </span><span class="nx">contents</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">urllib</span><span class="p">.</span><span class="nx">request</span><span class="p">.</span><span class="nx">urlopen</span><span class="p">(</span><span class="s">&quot;http://example.com&quot;</span><span class="p">).</span><span class="nx">read</span><span class="p">()</span>
+<span class="w">  </span><span class="nx">File</span><span class="w"> </span><span class="s">&quot;//demo.py&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">line</span><span class="w"> </span><span class="mi">8</span><span class="p">,</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="p">&lt;</span><span class="nx">module</span><span class="p">&gt;</span>
+<span class="w">    </span><span class="nx">main</span><span class="p">()</span>
+
+<span class="p">(</span><span class="nx">gdb</span><span class="p">)</span>
+</code></pre></div>
+
+<p>That works! It does become a bit arduous though, since we hit this watchpoint multiple times. Also, if we had a larger codebase, eg a large test suite, doing this interactively would be time consuming. Luckily, <code>gdb</code> is scriptable. I&#8217;ve included a <code>gdb</code> script in <code>gdb_cmd</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">set</span><span class="w"> </span><span class="nv">pagination</span><span class="w"> </span><span class="nv">off</span>
+
+<span class="nv">catch</span><span class="w"> </span><span class="nv">syscall</span><span class="w"> </span><span class="nv">sendmmsg</span>
+<span class="nv">run</span>
+
+<span class="k">while</span><span class="w"> </span><span class="mi">1</span>
+<span class="w">  </span><span class="nv">py</span><span class="o">-</span><span class="nv">bt</span>
+<span class="w">  </span><span class="k">continue</span>
+<span class="k">end</span>
+
+#<span class="w"> </span><span class="nv">This</span><span class="w"> </span><span class="nv">deletes</span><span class="w"> </span><span class="nv">all</span><span class="w"> </span><span class="nv">breakpoints</span>
+<span class="nv">delete</span>
+</code></pre></div>
+
+<p>You can run it&nbsp;using:</p>
+<div class="highlight"><pre><span></span><code># gdb --args /usr/bin/python3 ./demo.py &lt; ./gdb_cmd &gt; output.txt 2&gt;&amp;1
+</code></pre></div>
+
+<p>and then examine <code>output.txt</code>.</p>
+<p>Note <code>gdb</code> has a flag, <code>-x</code> that lets use execute scripts, eg <code>gdb -x ./gdb_cmd --args /usr/bin/python3 ./demo.py</code>. I&#8217;ve chosen to use <code>&lt;</code> to read the input because this will stream the commands 1 at a time and continue even if there is a failure. In our case, the <code>continue</code> command will fail after we reach the end of the <code>demo.py</code> and the script will stop leaving us in <code>gdb</code>. Using <code>&lt;</code> is a hack to allow us to continue and exit <code>gdb</code> even though we hit this&nbsp;error.</p>
+<h1>Conclusion</h1>
+<p>We have a scriptable way of detecting every network request is being made in a Python process and to get it&#8217;s associated backtrace using <code>gdb</code>. This methodology can be used to instrument any syscall. In addition we discussed using <code>strace</code> to see examine all the syscalls from a process. Happy&nbsp;debugging!</p>
+
+
+             
+ 
+            
+            
+            
+
+
+
+
+
+
+
+            <hr/>
+        </div>
+        <section id="article-sidebar" class="span2">
+            <h4>Published</h4>
+            <time itemprop="dateCreated" datetime="2024-08-09T00:00:00-07:00">Fri 09 August 2024</time>
+            <h4>Category</h4>
+            <a class="category-link" href="https://billdirks.com/categories.html#python-ref">python</a>
+            <h4>Tags</h4>
+            <ul class="list-of-tags tags-in-article">
+                <li><a href="https://billdirks.com/tags.html#debugging-ref">debugging
+                    <span class="superscript">1</span>
+</a></li>
+                <li><a href="https://billdirks.com/tags.html#python-ref">python
+                    <span class="superscript">3</span>
+</a></li>
+            </ul>
+<h4>Contact</h4>
+<div id="sidebar-social-link">
+    <a href="https://www.linkedin.com/in/bdirks/" title="LinkedIn" target="_blank" rel="nofollow noopener noreferrer">
+        <svg xmlns="http://www.w3.org/2000/svg" aria-label="LinkedIn" role="img" viewBox="0 0 512 512" fill="#fff"><rect width="512" height="512" rx="15%" fill="#0077b5"/><circle cx="142" cy="138" r="37"/><path stroke="#fff" stroke-width="66" d="M244 194v198M142 194v198"/><path d="M276 282c0-20 13-40 36-40 24 0 33 18 33 45v105h66V279c0-61-32-89-76-89-34 0-51 19-59 32"/></svg>
+    </a>
+</div>
+            
+
+
+
+
+
+            
+
+
+
+
+
+        </section>
+</div>
+</article>
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe.
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides.
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo https://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                      <div class="pswp__preloader__cut">
+                        <div class="pswp__preloader__donut"></div>
+                      </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>                    </div>
+                    <div class="span1"></div>
+                </div>
+            </div>
+        </div>
+            <script src="//code.jquery.com/jquery.min.js"></script>
+        <script src="//netdna.bootstrapcdn.com/twitter-bootstrap/2.3.2/js/bootstrap.min.js"></script>
+        <script src="https://billdirks.com/theme/js/elegant.prod.9e9d5ce754.js"></script>
+        <script>
+            function validateForm(query)
+            {
+                return (query.length > 0);
+            }
+        </script>
+
+    <script>
+    (function () {
+        if (window.location.hash.match(/^#comment-\d+$/)) {
+            $('#comment_thread').collapse('show');
+        }
+    })();
+    window.onhashchange=function(){
+        if (window.location.hash.match(/^#comment-\d+$/))
+            window.location.reload(true);
+    }
+    $('#comment_thread').on('shown', function () {
+        var link = document.getElementById('comment-accordion-toggle');
+        var old_innerHTML = link.innerHTML;
+        $(link).fadeOut(200, function() {
+            $(this).text('Click here to hide comments').fadeIn(200);
+        });
+        $('#comment_thread').on('hidden', function () {
+            $(link).fadeOut(200, function() {
+                $(this).text(old_innerHTML).fadeIn(200);
+            });
+        })
+    })
+</script>
+
+    </body>
+    <!-- Theme: Elegant built for Pelican
+        License : MIT -->
+</html>
