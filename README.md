@@ -19,4 +19,4 @@ make publish
 rsync -avu output/ ../docs
 ```
 
-Then make a PR and it will publish.
+Then make a PR, merge it into the `publish` branch, and it will publish.
