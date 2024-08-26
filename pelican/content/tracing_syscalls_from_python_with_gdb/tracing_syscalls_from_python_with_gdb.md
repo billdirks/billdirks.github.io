@@ -10,7 +10,7 @@ Summary: Tracing syscalls from Python with gdb
 
 Several times in my career I've inherited a Python project and have no idea where network requests are being made. For example, I've inherited large unit testing suites where some, but not all, network requests are being mocked. Another example is dependencies making surprising network requests. The goals of this post are:
 
-* Provide a tool to trackdown network requests in a Python process
+* Provide a tool to track down network requests in a Python process
 * Determine the context of the network request, that is the Python backtrace. This can be useful because if we want to find tests missing mocks.
 
 The technique discussed here can be leveraged generally to trace syscalls from Python.

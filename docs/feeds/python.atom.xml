@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom"><title>bill's mumbles - python</title><link href="https://billdirks.com/" rel="alternate"></link><link href="https://billdirks.com/feeds/python.atom.xml" rel="self"></link><id>https://billdirks.com/</id><updated>2024-08-09T00:00:00-07:00</updated><entry><title>How to trace a network request, or Using gdb to instrument syscalls made from Python</title><link href="https://billdirks.com/tracing-python-syscalls-with-gdb.html" rel="alternate"></link><published>2024-08-09T00:00:00-07:00</published><updated>2024-08-09T00:00:00-07:00</updated><author><name>bill dirks</name></author><id>tag:billdirks.com,2024-08-09:/tracing-python-syscalls-with-gdb.html</id><summary type="html">&lt;p&gt;Tracing syscalls from Python with&amp;nbsp;gdb&lt;/p&gt;</summary><content type="html">&lt;h1&gt;Motivation&lt;/h1&gt;
 &lt;p&gt;Several times in my career I&amp;#8217;ve inherited a Python project and have no idea where network requests are being made. For example, I&amp;#8217;ve inherited large unit testing suites where some, but not all, network requests are being mocked. Another example is dependencies making surprising network requests. The goals of this post&amp;nbsp;are:&lt;/p&gt;
 &lt;ul&gt;
-&lt;li&gt;Provide a tool to trackdown network requests in a Python&amp;nbsp;process&lt;/li&gt;
+&lt;li&gt;Provide a tool to track down network requests in a Python&amp;nbsp;process&lt;/li&gt;
 &lt;li&gt;Determine the context of the network request, that is the Python backtrace. This can be useful because if we want to find tests missing&amp;nbsp;mocks.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;p&gt;The technique discussed here can be leveraged generally to trace syscalls from&amp;nbsp;Python.&lt;/p&gt;
